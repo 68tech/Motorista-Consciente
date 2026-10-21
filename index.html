@@ -48,7 +48,7 @@
   .seg { display: flex; background: #0f141b; border: 1px solid #1f2937; border-radius: 14px; padding: 4px; }
   .seg button { flex: 1; height: 40px; border-radius: 10px; font-weight: 700; font-size: 14px; color: #9ca3af; transition: all .15s; }
   .seg button.on { background: #1f2a3a; color: #fff; }
-  .nav-btn { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; height: 64px; font-size: 11px; font-weight: 600; color: #6b7280; transition: color .15s; cursor: pointer; }
+  .nav-btn { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; height: 64px; font-size: 11px; font-weight: 600; color: #6b7280; transition: color .15s; }
   .nav-btn.on { color: #22c55e; }
   .nav-btn svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
   .no-scrollbar::-webkit-scrollbar { display: none; }
@@ -132,7 +132,7 @@
     <!-- ============ REGISTRAR ============ -->
     <section id="view-add" class="view">
       <h2 class="text-2xl font-extrabold mt-2">Registrar dia</h2>
-      <p class="text-sm text-gray-400 mt-1">O combustível é calculated automaticamente pelos KMs.</p>
+      <p class="text-sm text-gray-400 mt-1">O combustível é calculado automaticamente pelos KMs.</p>
 
       <form id="add-form" class="card p-4 mt-4 space-y-4" onsubmit="return saveEntry(event)" novalidate>
         <div class="grid grid-cols-2 gap-3">
@@ -346,4 +346,518 @@ function openModal(html) { $('modal').innerHTML = html; $('modal-back').classLis
 function closeModal() { $('modal-back').classList.remove('open'); }
 
 /* ===================== CÁLCULOS ===================== */
-function
+function vehicleCostKm() {
+  const s = state.settings;
+  const fuelKm = s.kmPerL > 0 ? s.fuelPrice / s.kmPerL : 0;
+  const rentKm = s.avgKm > 0 ? s.rent / s.avgKm : 0;
+  return { fuelKm, rentKm, wearKm: s.wear, total: fuelKm + rentKm + s.wear };
+}
+function entryNet(e) { return e.gross - e.fuel - e.rent - e.extra - e.wear; }
+
+function periodRange(p) {
+  const now = new Date(); const end = dstr(now);
+  if (p === 'today') return { start: end, end, days: 1 };
+  if (p === 'week') return { start: dstr(addDays(now, -6)), end, days: 7 };
+  return { start: dstr(new Date(now.getFullYear(), now.getMonth(), 1)), end, days: now.getDate() };
+}
+function filterEntries(p, plat) {
+  const r = periodRange(p);
+  return state.entries.filter(e => e.date >= r.start && e.date <= r.end && (!plat || plat === 'Todos' || e.platform === plat));
+}
+function agg(list) {
+  const a = { gross: 0, fuel: 0, rent: 0, extra: 0, wear: 0, km: 0, hours: 0 };
+  list.forEach(e => { a.gross += e.gross; a.fuel += e.fuel; a.rent += e.rent; a.extra += e.extra; a.wear += e.wear; a.km += e.km; a.hours += e.hours; });
+  a.costs = a.fuel + a.rent + a.extra + a.wear;
+  a.net = a.gross - a.costs;
+  a.perHour = a.hours > 0 ? a.net / a.hours : 0;
+  a.costKm = a.km > 0 ? a.costs / a.km : 0;
+  a.grossKm = a.km > 0 ? a.gross / a.km : 0;
+  return a;
+}
+function byPlatform(list) {
+  const m = {};
+  list.forEach(e => { (m[e.platform] = m[e.platform] || []).push(e); });
+  return Object.keys(m).map(k => ({ platform: k, a: agg(m[k]) })).sort((x, y) => y.a.gross - x.a.gross);
+}
+
+/* ===================== NAVEGAÇÃO ===================== */
+function show(v) {
+  ui.view = v;
+  document.querySelectorAll('.view').forEach(el => el.classList.toggle('active', el.id === 'view-' + v));
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.toggle('on', b.dataset.v === v));
+  if (v === 'dash') renderDash();
+  if (v === 'eval') renderEval();
+  if (v === 'add') initForm();
+  if (v === 'hist') renderHist();
+  if (v === 'cfg') renderCfg();
+  window.scrollTo({ top: 0 });
+}
+
+/* ===================== DASHBOARD ===================== */
+function renderDash() {
+  $('hdr-date').innerHTML = new Date().toLocaleDateString('pt-BR', { weekday: 'long' }) + '<br>' + new Date().toLocaleDateString('pt-BR');
+  document.querySelectorAll('#period-seg button').forEach(b => b.classList.toggle('on', b.dataset.p === ui.period));
+  $('plat-chips').innerHTML = ['Todos'].concat(PLATFORMS).map(p =>
+    `<button class="chip ${ui.platform === p ? 'on' : ''}" onclick="setPlat('${p}')">${p}</button>`).join('');
+
+  const body = $('dash-body');
+  if (state.entries.length === 0) {
+    body.innerHTML = `
+      <div class="card p-6 text-center">
+        <div class="text-5xl">🚗</div>
+        <h3 class="text-xl font-extrabold mt-3">Bem-vindo ao DriverStats</h3>
+        <p class="text-gray-400 text-sm mt-2">Descubra seu lucro real, quanto você ganha por hora e quanto cada KM custa.</p>
+        <div class="space-y-3 mt-5">
+          <button class="btn btn-primary" onclick="show('cfg')">1. Configurar meu veículo</button>
+          <button class="btn btn-ghost" onclick="show('add')">2. Registrar meu primeiro dia</button>
+          <button class="btn btn-ghost" onclick="askDemo()">🧪 Ver com dados de teste (Demo)</button>
+        </div>
+      </div>`;
+    return;
+  }
+
+  const list = filterEntries(ui.period, ui.platform);
+  const a = agg(list);
+  const r = periodRange(ui.period);
+  const goalTotal = state.settings.goal * r.days;
+  const pct = goalTotal > 0 ? (a.net / goalTotal) * 100 : 0;
+  const pctClamped = Math.max(0, Math.min(100, pct));
+  const netColor = a.net >= 0 ? 'text-brand' : 'text-red-400';
+  const hourOk = a.perHour >= state.settings.hourGoal;
+  const vc = vehicleCostKm();
+  const periodName = { today: 'hoje', week: 'nos últimos 7 dias', month: 'neste mês' }[ui.period];
+  const goalColor = pct >= 100 ? '#22c55e' : pct >= 60 ? '#f59e0b' : '#ef4444';
+
+  let html = '';
+  if (list.length === 0) {
+    html += `<div class="card p-5 text-center text-gray-400 text-sm">Nenhum registro ${periodName}${ui.platform !== 'Todos' ? ' em ' + esc(ui.platform) : ''}.<br><button class="btn btn-primary mt-4" onclick="show('add')">Registrar agora</button></div>`;
+  } else {
+    html += `
+    <div class="card p-5" style="background:linear-gradient(160deg,#122319,#121821 65%)">
+      <div class="text-xs font-bold uppercase tracking-wider text-gray-400">Lucro líquido real ${periodName}</div>
+      <div class="mono text-4xl font-black mt-1 ${netColor}">${money(a.net)}</div>
+      <div class="text-xs text-gray-400 mt-1">Bruto ${money(a.gross)} − custos ${money(a.costs)}</div>
+    </div>
+    <div class="grid grid-cols-2 gap-3 mt-3">
+      <div class="card p-4">
+        <div class="text-xs font-bold uppercase tracking-wider text-gray-400">Ganho por hora</div>
+        <div class="mono text-2xl font-black mt-1 ${hourOk ? 'text-brand' : 'text-amber2'}">${money(a.perHour)}<span class="text-sm font-semibold text-gray-400">/h</span></div>
+        <div class="text-xs text-gray-500 mt-1">${hm(a.hours)} trabalhadas · meta ${money(state.settings.hourGoal)}/h</div>
+      </div>
+      <div class="card p-4">
+        <div class="text-xs font-bold uppercase tracking-wider text-gray-400">Custo por KM</div>
+        <div class="mono text-2xl font-black mt-1 text-cyan2">${money(a.costKm)}<span class="text-sm font-semibold text-gray-400">/km</span></div>
+        <div class="text-xs text-gray-500 mt-1">${n1(a.km)} km · bruto ${money(a.grossKm)}/km</div>
+      </div>
+    </div>
+    <div class="card p-4 mt-3">
+      <div class="flex items-end justify-between">
+        <div>
+          <div class="text-xs font-bold uppercase tracking-wider text-gray-400">Progresso da meta ${r.days > 1 ? '(' + r.days + ' dias)' : 'diária'}</div>
+          <div class="mono text-3xl font-black mt-1" style="color:${goalColor}">${n1(pct)}%</div>
+        </div>
+        <div class="text-right text-xs text-gray-400">${money(a.net)}<br>de ${money(goalTotal)}</div>
+      </div>
+      <div class="bar mt-3"><div style="width:${pctClamped}%;background:${goalColor}"></div></div>
+      <div class="text-xs text-gray-500 mt-2">${pct >= 100 ? '🎉 Meta batida!' : 'Faltam ' + money(Math.max(0, goalTotal - a.net)) + ' para a meta.'}</div>
+    </div>
+    <div class="card p-4 mt-3">
+      <div class="text-xs font-bold uppercase tracking-wider text-gray-400 mb-2">Para onde foi o dinheiro</div>
+      <div class="grid grid-cols-2 gap-y-2 text-sm">
+        <span class="text-gray-400">⛽ Combustível</span><span class="mono text-right font-semibold">${money(a.fuel)}</span>
+        <span class="text-gray-400">🏠 Aluguel</span><span class="mono text-right font-semibold">${money(a.rent)}</span>
+        <span class="text-gray-400">🧾 Extras</span><span class="mono text-right font-semibold">${money(a.extra)}</span>
+        <span class="text-gray-400">🔧 Manutenção</span><span class="mono text-right font-semibold">${money(a.wear)}</span>
+      </div>
+    </div>`;
+
+    const plats = byPlatform(filterEntries(ui.period, 'Todos'));
+    if (plats.length) {
+      const totalGross = plats.reduce((s, p) => s + p.a.gross, 0) || 1;
+      html += `<div class="card p-4 mt-3"><div class="text-xs font-bold uppercase tracking-wider text-gray-400 mb-3">Por plataforma ${periodName}</div><div class="space-y-3">` +
+        plats.map(p => `
+          <div>
+            <div class="flex justify-between text-sm"><span class="font-semibold"><span style="color:${PLAT_COLOR[p.platform] || '#fff'}">●</span> ${esc(p.platform)}</span><span class="mono text-gray-300">${money(p.a.net)} <span class="text-gray-500 text-xs">líq.</span></span></div>
+            <div class="bar mt-1"><div style="width:${(p.a.gross / totalGross * 100).toFixed(1)}%;background:${PLAT_COLOR[p.platform] || '#22c55e'}"></div></div>
+          </div>`).join('') + `</div></div>`;
+    }
+  }
+
+  html += `
+    <div class="card p-4 mt-3 flex items-center justify-between">
+      <div><div class="text-xs font-bold uppercase tracking-wider text-gray-400">Custo do veículo (config.)</div>
+      <div class="mono text-xl font-extrabold text-cyan2">${money(vc.total)}/km</div></div>
+      <button class="chip" style="height:44px" onclick="show('eval')">⚡ Avaliar corrida</button>
+    </div>
+    <div class="grid grid-cols-2 gap-3 mt-3">
+      <button class="btn btn-primary" onclick="openReport('${ui.period}')">📲 Relatório WhatsApp</button>
+      <button class="btn btn-ghost" onclick="askDemo()">🧪 Dados de teste</button>
+    </div>`;
+  body.innerHTML = html;
+}
+function setPlat(p) { ui.platform = p; renderDash(); }
+document.querySelectorAll('#period-seg button').forEach(b => b.addEventListener('click', () => { ui.period = b.dataset.p; renderDash(); }));
+
+/* ===================== AVALIADOR ===================== */
+function renderEval() { calcEval(); }
+function clearEval() { ['ev-value', 'ev-km', 'ev-min'].forEach(i => $(i).value = ''); calcEval(); }
+function calcEval() {
+  const v = parseNum($('ev-value').value), d = parseNum($('ev-km').value), t = parseNum($('ev-min').value);
+  const s = state.settings, vc = vehicleCostKm();
+  const out = $('ev-result');
+  const base = `<div class="card p-4 flex justify-between items-center text-sm"><span class="text-gray-400">Custo do seu veículo</span><span class="mono font-bold text-cyan2">${money(vc.total)}/km</span></div>`;
+  if (!(v > 0) || !(d > 0)) {
+    out.innerHTML = `<div class="card p-6 text-center text-gray-400"><div class="text-4xl">⚡</div><p class="mt-2 text-sm">Preencha o valor e a distância para ver o veredito.</p></div><div class="mt-3">${base}</div>`;
+    return;
+  }
+  const perKm = v / d;
+  const cost = d * vc.total;
+  const profit = v - cost;
+  const minValue = cost * (1 + s.margin / 100);
+  const hasT = t > 0;
+  const perHour = hasT ? profit / (t / 60) : null;
+
+  let status = 'ok';
+  const reasons = [];
+  if (perKm < vc.total) { status = 'bad'; reasons.push(`R$/km (${money(perKm)}) abaixo do custo (${money(vc.total)}).`); }
+  else if (perKm < vc.total * (1 + s.margin / 100)) { status = 'warn'; reasons.push(`Cobre o custo, mas fica abaixo da margem de ${s.margin}%.`); }
+  if (hasT) {
+    if (perHour < s.hourGoal * 0.5) { status = 'bad'; reasons.push(`Só ${money(perHour)}/h — muito abaixo da meta de ${money(s.hourGoal)}/h.`); }
+    else if (perHour < s.hourGoal && status === 'ok') { status = 'warn'; reasons.push(`${money(perHour)}/h está abaixo da sua meta de ${money(s.hourGoal)}/h.`); }
+  }
+  if (status === 'ok') reasons.push('Passa o custo do veículo, a margem e a meta por hora.');
+
+  const cfg = {
+    ok: { cls: 'pulse-ok', bg: 'linear-gradient(160deg,#14532d,#166534)', bd: '#22c55e', icon: '✅', title: 'VALE A PENA', color: '#bbf7d0' },
+    warn: { cls: '', bg: 'linear-gradient(160deg,#78350f,#92400e)', bd: '#f59e0b', icon: '⚠️', title: 'NO LIMITE', color: '#fde68a' },
+    bad: { cls: 'pulse-bad', bg: 'linear-gradient(160deg,#7f1d1d,#991b1b)', bd: '#ef4444', icon: '⛔', title: 'PREJUÍZO / RECUSAR', color: '#fecaca' }
+  }[status];
+
+  out.innerHTML = `
+    <div class="badge-big ${cfg.cls}" style="background:${cfg.bg};border:2px solid ${cfg.bd}">
+      <div class="text-5xl">${cfg.icon}</div>
+      <div class="text-2xl font-black mt-1" style="color:${cfg.color}">${cfg.title}</div>
+      <div class="text-sm mt-2" style="color:${cfg.color};opacity:.9">${reasons.join('<br>')}</div>
+    </div>
+    <div class="grid grid-cols-2 gap-3 mt-3">
+      <div class="card p-4"><div class="text-xs font-bold uppercase text-gray-400">Corrida R$/km</div><div class="mono text-2xl font-black mt-1 ${perKm >= vc.total ? 'text-brand' : 'text-red-400'}">${money(perKm)}</div></div>
+      <div class="card p-4"><div class="text-xs font-bold uppercase text-gray-400">Seu custo/km</div><div class="mono text-2xl font-black mt-1 text-cyan2">${money(vc.total)}</div></div>
+      <div class="card p-4"><div class="text-xs font-bold uppercase text-gray-400">Lucro estimado</div><div class="mono text-2xl font-black mt-1 ${profit >= 0 ? 'text-brand' : 'text-red-400'}">${money(profit)}</div></div>
+      <div class="card p-4"><div class="text-xs font-bold uppercase text-gray-400">${hasT ? 'Lucro por hora' : 'Valor mínimo ideal'}</div><div class="mono text-2xl font-black mt-1 ${hasT ? (perHour >= s.hourGoal ? 'text-brand' : 'text-amber2') : 'text-gray-100'}">${hasT ? money(perHour) : money(minValue)}</div></div>
+    </div>
+    ${hasT ? `<div class="card p-4 mt-3 text-sm flex justify-between"><span class="text-gray-400">Valor mínimo p/ margem de ${s.margin}%</span><span class="mono font-bold">${money(minValue)}</span></div>` : ''}
+    <div class="card p-4 mt-3 text-xs text-gray-400 leading-relaxed">Custo/km = combustível ${money(vc.fuelKm)} + manutenção ${money(vc.wearKm)} + aluguel diluído ${money(vc.rentKm)}.</div>`;
+}
+['ev-value', 'ev-km', 'ev-min'].forEach(id => $(id).addEventListener('input', calcEval));
+
+/* ===================== REGISTRO ===================== */
+function initForm() {
+  const sel = $('f-plat');
+  if (!sel.options.length) sel.innerHTML = PLATFORMS.map(p => `<option>${p}</option>`).join('');
+  if (!$('f-date').value) $('f-date').value = todayStr();
+  updateRentCheck();
+  updatePreview();
+}
+function updateRentCheck() {
+  const date = $('f-date').value || todayStr();
+  const already = state.entries.some(e => e.date === date && e.rent > 0);
+  const rent = state.settings.rent;
+  $('f-rent').checked = rent > 0 && !already;
+  $('f-rent').disabled = rent <= 0;
+  $('f-rent-info').textContent = rent <= 0 ? 'Defina o valor da diária em Config.' :
+    (already ? `${money(rent)} — já descontado em outro registro deste dia` : `${money(rent)} — descontado uma vez por dia`);
+}
+function formCalc() {
+  const s = state.settings;
+  const gross = numOr0($('f-gross').value), km = numOr0($('f-km').value), hours = numOr0($('f-hours').value), extra = numOr0($('f-extra').value);
+  const fuel = s.kmPerL > 0 ? km / s.kmPerL * s.fuelPrice : 0;
+  const rent = $('f-rent').checked ? s.rent : 0;
+  const wear = km * s.wear;
+  const net = gross - fuel - rent - extra - wear;
+  return { gross, km, hours, extra, fuel, rent, wear, net, perHour: hours > 0 ? net / hours : 0 };
+}
+function updatePreview() {
+  const c = formCalc();
+  $('f-preview').innerHTML = `
+    <div class="grid grid-cols-2 gap-y-1">
+      <span class="text-gray-400">⛽ Combustível (auto)</span><span class="mono text-right font-semibold">${money(c.fuel)}</span>
+      <span class="text-gray-400">🔧 Manutenção</span><span class="mono text-right font-semibold">${money(c.wear)}</span>
+      <span class="text-gray-400">🏠 Aluguel</span><span class="mono text-right font-semibold">${money(c.rent)}</span>
+      <span class="text-gray-400">💵 Lucro líquido</span><span class="mono text-right font-extrabold ${c.net >= 0 ? 'text-brand' : 'text-red-400'}">${money(c.net)}</span>
+      <span class="text-gray-400">⏱️ Ganho/hora</span><span class="mono text-right font-extrabold">${money(c.perHour)}</span>
+    </div>`;
+}
+['f-gross', 'f-km', 'f-hours', 'f-extra'].forEach(id => $(id).addEventListener('input', updatePreview));
+$('f-rent').addEventListener('change', updatePreview);
+$('f-date').addEventListener('change', () => { updateRentCheck(); updatePreview(); });
+
+function saveEntry(ev) {
+  ev.preventDefault();
+  const c = formCalc();
+  if (!($('f-date').value)) { toast('Informe a data'); return false; }
+  if (!(c.gross > 0)) { toast('Informe o faturamento bruto'); $('f-gross').focus(); return false; }
+  if (!(c.km > 0)) { toast('Informe os KMs rodados'); $('f-km').focus(); return false; }
+  if (!(c.hours > 0)) { toast('Informe as horas trabalhadas'); $('f-hours').focus(); return false; }
+  state.entries.push({
+    id: uid(), date: $('f-date').value, platform: $('f-plat').value,
+    gross: c.gross, km: c.km, hours: c.hours, extra: c.extra, fuel: c.fuel, rent: c.rent, wear: c.wear, createdAt: Date.now()
+  });
+  saveState();
+  ['f-gross', 'f-km', 'f-hours', 'f-extra'].forEach(i => $(i).value = '');
+  toast('✅ Registro salvo! Lucro: ' + money(c.net));
+  ui.period = ($('f-date').value === todayStr()) ? 'today' : 'month';
+  ui.platform = 'Todos';
+  show('dash');
+  return false;
+}
+
+/* ===================== HISTÓRICO ===================== */
+function renderHist() {
+  const body = $('hist-body');
+  if (!state.entries.length) {
+    body.innerHTML = `<div class="card p-6 text-center text-gray-400 text-sm">Nenhum registro ainda.<br><button class="btn btn-primary mt-4" onclick="show('add')">Registrar um dia</button></div>`;
+    return;
+  }
+  const groups = {};
+  state.entries.forEach(e => (groups[e.date] = groups[e.date] || []).push(e));
+  const dates = Object.keys(groups).sort().reverse();
+  const shown = dates.slice(0, ui.histDays);
+  body.innerHTML = shown.map(d => {
+    const list = groups[d].slice().sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+    const a = agg(list);
+    return `
+    <div>
+      <div class="flex items-center justify-between px-1 mb-2">
+        <div class="font-bold"><span class="capitalize">${weekday(d)}</span> <span class="text-gray-400 font-medium">${fmtDate(d)}</span></div>
+        <div class="mono font-extrabold ${a.net >= 0 ? 'text-brand' : 'text-red-400'}">${money(a.net)}</div>
+      </div>
+      <div class="space-y-2">` + list.map(e => {
+        const net = entryNet(e);
+        return `
+        <div class="card p-3">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-bold px-2 py-1 rounded-full" style="background:#0f141b;border:1px solid #263244;color:${PLAT_COLOR[e.platform] || '#fff'}">${esc(e.platform)}</span>
+            <button aria-label="Excluir registro" class="w-11 h-11 rounded-xl flex items-center justify-center text-red-400" style="background:#2a1217" onclick="askDelete('${e.id}')">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14M10 11v6M14 11v6"/></svg>
+            </button>
+          </div>
+          <div class="grid grid-cols-3 gap-2 mt-2 text-center">
+            <div><div class="text-[11px] text-gray-500 uppercase font-semibold">Bruto</div><div class="mono font-bold text-sm">${money(e.gross)}</div></div>
+            <div><div class="text-[11px] text-gray-500 uppercase font-semibold">Líquido</div><div class="mono font-bold text-sm ${net >= 0 ? 'text-brand' : 'text-red-400'}">${money(net)}</div></div>
+            <div><div class="text-[11px] text-gray-500 uppercase font-semibold">Por hora</div><div class="mono font-bold text-sm">${money(e.hours > 0 ? net / e.hours : 0)}</div></div>
+          </div>
+          <div class="text-xs text-gray-500 mt-2 text-center">${n1(e.km)} km · ${hm(e.hours)} · comb. ${money(e.fuel)}${e.rent ? ' · aluguel ' + money(e.rent) : ''}${e.extra ? ' · extras ' + money(e.extra) : ''}${e.demo ? ' · <span class="text-amber2">demo</span>' : ''}</div>
+        </div>`;
+      }).join('') + `</div></div>`;
+  }).join('') + (dates.length > ui.histDays ? `<button class="btn btn-ghost" onclick="ui.histDays+=14;renderHist()">Mostrar mais dias</button>` : '');
+}
+function askDelete(id) {
+  openModal(`
+    <h3 class="text-xl font-extrabold">Excluir registro?</h3>
+    <p class="text-gray-400 text-sm mt-2">Essa ação não pode ser desfeita.</p>
+    <div class="grid grid-cols-2 gap-3 mt-5">
+      <button class="btn btn-ghost" onclick="closeModal()">Cancelar</button>
+      <button class="btn btn-danger" onclick="doDelete('${id}')">Excluir</button>
+    </div>`);
+}
+function doDelete(id) {
+  state.entries = state.entries.filter(e => e.id !== id);
+  saveState(); closeModal(); toast('Registro excluído'); renderHist();
+}
+
+/* ===================== RELATÓRIO WHATSAPP ===================== */
+function buildReport(p) {
+  const list = filterEntries(p, 'Todos');
+  const r = periodRange(p);
+  const title = { today: 'Resumo do dia', week: 'Resumo da semana (7 dias)', month: 'Resumo do mês' }[p];
+  const range = r.start === r.end ? fmtDate(r.end) : fmtDate(r.start) + ' a ' + fmtDate(r.end);
+  if (!list.length) return null;
+  const a = agg(list);
+  const goalTotal = state.settings.goal * r.days;
+  const pct = goalTotal > 0 ? a.net / goalTotal * 100 : 0;
+  let t = `🚗 *DriverStats* — ${title}\n📅 ${range}\n\n`;
+  t += `💰 Faturamento bruto: ${money(a.gross)}\n`;
+  t += `⛽ Combustível: ${money(a.fuel)}\n`;
+  if (a.rent > 0) t += `🏠 Aluguel: ${money(a.rent)}\n`;
+  if (a.extra > 0) t += `🧾 Extras: ${money(a.extra)}\n`;
+  if (a.wear > 0) t += `🔧 Manutenção (reserva): ${money(a.wear)}\n`;
+  t += `✅ *Lucro líquido: ${money(a.net)}*\n\n`;
+  t += `⏱️ Horas: ${hm(a.hours)}\n`;
+  t += `📍 KM rodados: ${n1(a.km)} km\n`;
+  t += `📈 Ganho por hora: ${money(a.perHour)}/h\n`;
+  t += `🛣️ Custo por km: ${money(a.costKm)}/km\n`;
+  t += `🎯 Meta: ${n1(pct)}% (${money(goalTotal)})\n`;
+  const plats = byPlatform(list);
+  if (plats.length > 1 || (plats.length === 1)) {
+    t += `\n📱 *Por plataforma*\n` + plats.map(x => `• ${x.platform}: ${money(x.a.gross)} bruto → ${money(x.a.net)} líq.`).join('\n') + '\n';
+  }
+  if (p === 'week') {
+    const days = {};
+    list.forEach(e => (days[e.date] = days[e.date] || []).push(e));
+    t += `\n🗓️ *Dia a dia*\n` + Object.keys(days).sort().map(d => `• ${fmtDate(d).slice(0, 5)} (${weekday(d)}): ${money(agg(days[d]).net)}`).join('\n') + '\n';
+  }
+  t += `\n_Gerado pelo DriverStats_`;
+  return t;
+}
+function openReport(p) {
+  ui.reportPeriod = p;
+  const text = buildReport(p);
+  const seg = ['today', 'week', 'month'].map(k => `<button data-p="${k}" class="${k === p ? 'on' : ''}" onclick="openReport('${k}')">${{ today: 'Dia', week: 'Semana', month: 'Mês' }[k]}</button>`).join('');
+  openModal(`
+    <div class="flex items-center justify-between mb-3">
+      <h3 class="text-xl font-extrabold">Relatório para WhatsApp</h3>
+      <button class="w-10 h-10 rounded-xl bg-soft border border-line text-gray-300 text-lg" onclick="closeModal()" aria-label="Fechar">✕</button>
+    </div>
+    <div class="seg mb-3">${seg}</div>
+    ${text ? `
+      <textarea id="report-text" class="inp" readonly>${esc(text)}</textarea>
+      <div class="space-y-3 mt-3">
+        <button class="btn btn-primary" onclick="sendWpp()">Enviar no WhatsApp</button>
+        <div class="grid grid-cols-2 gap-3">
+          <button class="btn btn-ghost" onclick="copyReport()">📋 Copiar</button>
+          <button class="btn btn-ghost" onclick="shareReport()">↗️ Compartilhar</button>
+        </div>
+      </div>` : `<div class="card p-5 text-center text-gray-400 text-sm">Sem registros neste período para gerar o relatório.</div>`}
+  `);
+}
+function reportText() { const el = $('report-text'); return el ? el.value : ''; }
+function sendWpp() { window.open('https://wa.me/?text=' + encodeURIComponent(reportText()), '_blank'); }
+function copyReport() {
+  const t = reportText();
+  const fallback = () => { const el = $('report-text'); el.removeAttribute('readonly'); el.select(); el.setSelectionRange(0, 99999); try { document.execCommand('copy'); toast('📋 Relatório copiado'); } catch (e) { toast('Não foi possível copiar'); } el.setAttribute('readonly', ''); };
+  if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(t).then(() => toast('📋 Relatório copiado'), fallback);
+  else fallback();
+}
+function shareReport() {
+  const t = reportText();
+  if (navigator.share) navigator.share({ text: t }).catch(() => {});
+  else copyReport();
+}
+
+/* ===================== CONFIG ===================== */
+function renderCfg() {
+  document.querySelectorAll('#view-cfg input[data-k]').forEach(inp => { inp.value = toInput(state.settings[inp.dataset.k]); });
+  updateCfgSummary();
+  $('btn-install').style.display = deferredPrompt ? 'flex' : 'none';
+}
+function updateCfgSummary() {
+  const s = state.settings, vc = vehicleCostKm();
+  $('cfg-summary').innerHTML = `
+    <div class="text-gray-400">Custo estimado do veículo</div>
+    <div class="mono text-xl font-extrabold text-cyan2">${money(vc.total)}/km</div>
+    <div class="text-xs text-gray-500 mt-1">Combustível ${money(vc.fuelKm)} + manutenção ${money(vc.wearKm)} + aluguel ${money(vc.rentKm)}</div>
+    <div class="text-xs text-gray-500 mt-1">Corrida "vale a pena" a partir de ${money(vc.total * (1 + s.margin / 100))}/km</div>`;
+}
+let cfgTimer;
+document.querySelectorAll('#view-cfg input[data-k]').forEach(inp => inp.addEventListener('input', () => {
+  const n = parseNum(inp.value);
+  if (isNaN(n) || n < 0) return;
+  state.settings[inp.dataset.k] = n;
+  saveState(); updateCfgSummary();
+  clearTimeout(cfgTimer); cfgTimer = setTimeout(() => toast('✓ Salvo'), 700);
+}));
+
+/* ===================== DEMO / LIMPEZA ===================== */
+function askDemo() {
+  const has = state.entries.some(e => !e.demo);
+  openModal(`
+    <h3 class="text-xl font-extrabold">Preencher dados de teste?</h3>
+    <p class="text-gray-400 text-sm mt-2">${has ? 'Os dados de demonstração serão <b>adicionados</b> aos seus registros e as configurações do veículo serão ajustadas para valores de exemplo.' : 'Serão criados 10 dias de registros fictícios e configurações de exemplo para você explorar o app.'}</p>
+    <div class="grid grid-cols-2 gap-3 mt-5">
+      <button class="btn btn-ghost" onclick="closeModal()">Cancelar</button>
+      <button class="btn btn-primary" onclick="fillDemo()">Preencher</button>
+    </div>`);
+}
+function fillDemo() {
+  let seed = 20261021;
+  const rnd = () => (seed = (seed * 1664525 + 1013904223) % 4294967296) / 4294967296;
+  state.settings = Object.assign({}, state.settings, { fuelPrice: 6.19, kmPerL: 12.5, rent: 90, wear: 0.10, avgKm: 160, goal: 180, hourGoal: 25, margin: 40 });
+  state.entries = state.entries.filter(e => !e.demo);
+  const s = state.settings, now = new Date();
+  const mk = (date, platform, gross, km, hours, extra, withRent) => ({
+    id: uid(), date, platform, gross: +gross.toFixed(2), km: +km.toFixed(1), hours: +hours.toFixed(1), extra, fuel: +(km / s.kmPerL * s.fuelPrice).toFixed(2),
+    rent: withRent ? s.rent : 0, wear: +(km * s.wear).toFixed(2), createdAt: Date.now() + Math.floor(rnd() * 1000), demo: true
+  });
+  for (let i = 9; i >= 0; i--) {
+    if (i === 4) continue; // dia de folga
+    const date = dstr(addDays(now, -i));
+    const km = 110 + rnd() * 100;
+    const gross = km * (2.0 + rnd() * 0.9);
+    const hours = Math.max(5, km / (16 + rnd() * 6));
+    const extra = rnd() > 0.5 ? Math.round(10 + rnd() * 20) : 0;
+    if (i % 3 === 0) {
+      state.entries.push(mk(date, 'Uber', gross * 0.6, km * 0.6, hours * 0.6, extra, true));
+      state.entries.push(mk(date, i % 2 ? '99' : 'InDrive', gross * 0.4, km * 0.4, hours * 0.4, 0, false));
+    } else if (i % 5 === 1) {
+      state.entries.push(mk(date, 'Entrega/Mottu', gross * 0.9, km, hours, extra, true));
+    } else {
+      state.entries.push(mk(date, i % 2 ? 'Uber' : '99', gross, km, hours, extra, true));
+    }
+  }
+  saveState(); closeModal();
+  ui.period = 'week'; ui.platform = 'Todos';
+  toast('🧪 Dados de teste carregados');
+  show('dash');
+}
+function removeDemo() {
+  const n = state.entries.filter(e => e.demo).length;
+  if (!n) { toast('Não há dados de teste'); return; }
+  state.entries = state.entries.filter(e => !e.demo);
+  saveState(); toast('Dados de teste removidos'); renderCfg();
+}
+function askWipe() {
+  openModal(`
+    <h3 class="text-xl font-extrabold">Apagar tudo?</h3>
+    <p class="text-gray-400 text-sm mt-2">Todos os registros e configurações deste aparelho serão apagados. Não dá para desfazer.</p>
+    <div class="grid grid-cols-2 gap-3 mt-5">
+      <button class="btn btn-ghost" onclick="closeModal()">Cancelar</button>
+      <button class="btn btn-danger" onclick="wipeAll()">Apagar tudo</button>
+    </div>`);
+}
+function wipeAll() {
+  state = { settings: Object.assign({}, DEFAULTS), entries: [] };
+  saveState(); closeModal(); toast('Dados apagados'); renderCfg();
+}
+
+/* ===================== PWA ===================== */
+function makeIcon(size) {
+  const c = document.createElement('canvas'); c.width = c.height = size;
+  const x = c.getContext('2d');
+  x.fillStyle = '#0b0f14'; x.fillRect(0, 0, size, size);
+  const g = x.createLinearGradient(0, 0, size, size); g.addColorStop(0, '#22c55e'); g.addColorStop(1, '#06b6d4');
+  const r = size * 0.22, p = size * 0.12, w = size - p * 2;
+  x.fillStyle = g; x.beginPath();
+  x.moveTo(p + r, p); x.arcTo(p + w, p, p + w, p + w, r); x.arcTo(p + w, p + w, p, p + w, r); x.arcTo(p, p + w, p, p, r); x.arcTo(p, p, p + w, p, r); x.closePath(); x.fill();
+  x.fillStyle = '#04210f'; x.font = '900 ' + size * 0.36 + 'px system-ui, Arial, sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle';
+  x.fillText('DS', size / 2, size / 2 + size * 0.02);
+  return c.toDataURL('image/png');
+}
+let deferredPrompt = null;
+function setupPWA() {
+  try {
+    const i192 = makeIcon(192), i512 = makeIcon(512), i180 = makeIcon(180);
+    $('apple-icon').href = i180; $('fav-icon').href = i192;
+    const manifest = {
+      name: 'DriverStats - Gestão de Lucro para Motoristas e Entregadores', short_name: 'DriverStats',
+      description: 'Calcule seu lucro real e avalie corridas na hora.',
+      start_url: location.href.split('#')[0], scope: location.href.split('#')[0].replace(/[^/]*$/, ''),
+      display: 'standalone', orientation: 'portrait', background_color: '#0b0f14', theme_color: '#0b0f14', lang: 'pt-BR',
+      icons: [{ src: i192, sizes: '192x192', type: 'image/png', purpose: 'any maskable' }, { src: i512, sizes: '512x512', type: 'image/png', purpose: 'any maskable' }]
+    };
+    $('manifest-link').href = URL.createObjectURL(new Blob([JSON.stringify(manifest)], { type: 'application/manifest+json' }));
+  } catch (e) { /* PWA best-effort */ }
+  if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+    // Service worker inline via Blob não é aceito pelos navegadores; se hospedar, adicione sw.js ao lado do index.html.
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+  }
+}
+window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); deferredPrompt = e; if (ui.view === 'cfg') $('btn-install').style.display = 'flex'; });
+window.addEventListener('appinstalled', () => { deferredPrompt = null; $('btn-install').style.display = 'none'; toast('App instalado!'); });
+function installApp() { if (!deferredPrompt) return; deferredPrompt.prompt(); deferredPrompt.userChoice.finally(() => { deferredPrompt = null; $('btn-install').style.display = 'none'; }); }
+
+/* ===================== INIT ===================== */
+setupPWA();
+show('dash');
+</script>
+</body>
+</html>
