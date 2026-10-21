@@ -1,134 +1,354 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>MotoristaEspertoAC - Gestão de Lucro e Metas</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <!-- Biblioteca para exportar o relatório em PDF -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
-</head>
-<body class="bg-slate-900 text-slate-100 min-h-screen p-4 md:p-6 font-sans">
-  <div class="max-w-md mx-auto space-y-6" id="app-content">
-    
-    <!-- Cabeçalho -->
-    <header class="flex items-center justify-between border-b border-slate-800 pb-4">
-      <div>
-        <h1 class="text-2xl font-black text-emerald-400">MotoristaEspertoAC</h1>
-        <p class="text-xs text-slate-400">Calculadora e Gestão de Lucro Real</p>
-      </div>
-      <span class="bg-emerald-500/10 text-emerald-400 text-xs px-2.5 py-1 rounded-full font-bold border border-emerald-500/20">Acre</span>
-    </header>
-
-    <!-- Tipo de Veículo -->
-    <div class="bg-slate-800/80 p-4 rounded-xl border border-slate-700 space-y-3">
-      <label class="block text-xs font-bold text-slate-300 uppercase tracking-wider">Tipo de Veículo</label>
-      <div class="grid grid-cols-2 gap-3">
-        <button id="btnMoto" onclick="setVeiculo('moto')" class="p-3 rounded-lg border-2 border-emerald-500 bg-emerald-500/10 font-bold text-center text-emerald-400 transition-all">
-          🏍️ Moto
-        </button>
-        <button id="btnCarro" onclick="setVeiculo('carro')" class="p-3 rounded-lg border-2 border-slate-700 bg-slate-900/50 font-bold text-center text-slate-400 transition-all">
-          🚗 Carro
-        </button>
-      </div>
-    </div>
-
-    <!-- Formulário de Lançamento de Corrida/Turno -->
-    <div class="bg-slate-800/80 p-4 rounded-xl border border-slate-700 space-y-4">
-      <h2 class="text-sm font-bold text-slate-200">Novo Lançamento</h2>
-      
-      <!-- Aplicativos (Apenas os disponíveis no Estado) -->
-      <div>
-        <label class="block text-xs text-slate-400 mb-1">Selecione o Aplicativo / Origem</label>
-        <select id="selectApp" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-slate-100 font-medium focus:border-emerald-500 outline-none">
-          <option value="Uber">Uber</option>
-          <option value="99">99</option>
-          <option value="iFood">iFood</option>
-          <option value="99Food">99Food</option>
-          <option value="Particular">Particular</option>
-        </select>
-      </div>
-
-      <div class="grid grid-cols-2 gap-3">
-        <div>
-          <label class="block text-xs text-slate-400 mb-1">Ganhos Brutos (R$)</label>
-          <input type="number" id="valorGanhos" placeholder="0.00" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-slate-100 outline-none focus:border-emerald-500">
-        </div>
-        <div>
-          <label class="block text-xs text-slate-400 mb-1">KM Rodados</label>
-          <input type="number" id="kmRodados" placeholder="0" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-slate-100 outline-none focus:border-emerald-500">
-        </div>
-      </div>
-
-      <button onclick="calcularGanhos()" class="w-full bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-black p-3 rounded-lg transition-all shadow-lg shadow-emerald-500/20">
-        Calcular Lucro
-      </button>
-    </div>
-
-    <!-- Painel de Resultados -->
-    <div class="bg-slate-800/80 p-4 rounded-xl border border-slate-700 space-y-3" id="relatorio-secao">
-      <h2 class="text-sm font-bold text-slate-200">Resumo de Desempenho</h2>
-      <div class="grid grid-cols-2 gap-3">
-        <div class="bg-slate-900 p-3 rounded-lg border border-slate-800">
-          <p class="text-xs text-slate-400">Lucro Líquido Real</p>
-          <p id="lucroLiquido" class="text-xl font-black text-emerald-400">R$ 0,00</p>
-        </div>
-        <div class="bg-slate-900 p-3 rounded-lg border border-slate-800">
-          <p class="text-xs text-slate-400">Custo Estimado (KM)</p>
-          <p id="custoKm" class="text-xl font-black text-rose-400">R$ 0,00</p>
-        </div>
-      </div>
-
-      <!-- Botão para Exportar PDF -->
-      <button onclick="gerarPDF()" class="w-full bg-slate-700 hover:bg-slate-600 text-slate-100 font-bold p-2.5 rounded-lg text-sm flex items-center justify-center gap-2 border border-slate-600 transition-all">
-        📄 Exportar Relatório em PDF
-      </button>
-    </div>
-
-  </div>
-
-  <script>
-    let veiculoAtual = 'moto';
-    // Custo estimado por KM (Ajustado para a realidade local)
-    const custosKM = { moto: 0.25, carro: 0.65 };
-
-    function setVeiculo(tipo) {
-      veiculoAtual = tipo;
-      const btnMoto = document.getElementById('btnMoto');
-      const btnCarro = document.getElementById('btnCarro');
-
-      if (tipo === 'moto') {
-        btnMoto.className = 'p-3 rounded-lg border-2 border-emerald-500 bg-emerald-500/10 font-bold text-center text-emerald-400 transition-all';
-        btnCarro.className = 'p-3 rounded-lg border-2 border-slate-700 bg-slate-900/50 font-bold text-center text-slate-400 transition-all';
-      } else {
-        btnCarro.className = 'p-3 rounded-lg border-2 border-emerald-500 bg-emerald-500/10 font-bold text-center text-emerald-400 transition-all';
-        btnMoto.className = 'p-3 rounded-lg border-2 border-slate-700 bg-slate-900/50 font-bold text-center text-slate-400 transition-all';
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>MotoristaEspertoAC - Gestão de Lucro para Motoristas e Entregadores</title>
+<meta name="description" content="MotoristaEspertoAC: calcule seu lucro real, custo por KM e avalie corridas na hora.">
+<meta name="theme-color" content="#0b0f14">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="MotoristaEspertoAC">
+<meta name="application-name" content="MotoristaEspertoAC">
+<meta name="format-detection" content="telephone=no">
+<link rel="manifest" id="manifest-link">
+<link rel="apple-touch-icon" id="apple-icon">
+<link rel="icon" type="image/png" id="fav-icon">
+<script src="https://cdn.tailwindcss.com"></script>
+<!-- Biblioteca para exportar o relatório em PDF -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        colors: {
+          bg: '#0b0f14', card: '#121821', line: '#1f2937', soft: '#0f141b',
+          brand: '#22c55e', amber2: '#f59e0b', cyan2: '#22d3ee'
+        },
+        fontFamily: { sans: ['Inter', 'system-ui', '-apple-system', 'Segoe UI', 'Roboto', 'sans-serif'] }
       }
     }
+  }
+</script>
+<style>
+  * { -webkit-tap-highlight-color: transparent; box-sizing: border-box; }
+  html, body { background: #0b0f14; color: #e5e7eb; margin: 0; overscroll-behavior-y: none; }
+  body { font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; padding-top: env(safe-area-inset-top); }
+  .card { background: #121821; border: 1px solid #1f2937; border-radius: 20px; }
+  .inp { width: 100%; height: 54px; background: #0f141b; border: 1.5px solid #1f2937; border-radius: 14px; padding: 0 14px; font-size: 18px; color: #f3f4f6; outline: none; transition: border-color .15s; -webkit-appearance: none; appearance: none; }
+  .inp:focus { border-color: #22c55e; }
+  select.inp { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='%239ca3af' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 12px center; padding-right: 40px; }
+  .lbl { display: block; font-size: 12px; font-weight: 600; color: #9ca3af; letter-spacing: .04em; text-transform: uppercase; margin: 0 0 6px 2px; }
+  .btn { height: 56px; border-radius: 16px; font-weight: 700; font-size: 17px; width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px; transition: transform .08s, opacity .15s; }
+  .btn:active { transform: scale(.97); opacity: .9; }
+  .btn-primary { background: #22c55e; color: #052e16; }
+  .btn-ghost { background: #172030; color: #e5e7eb; border: 1px solid #263244; }
+  .btn-danger { background: #3b1219; color: #fca5a5; border: 1px solid #5b1c26; }
+  .chip { flex: 0 0 auto; height: 40px; padding: 0 16px; border-radius: 999px; border: 1.5px solid #263244; background: #0f141b; color: #cbd5e1; font-weight: 600; font-size: 14px; white-space: nowrap; transition: all .15s; }
+  .chip.on { background: #22c55e; border-color: #22c55e; color: #052e16; }
+  .seg { display: flex; background: #0f141b; border: 1px solid #1f2937; border-radius: 14px; padding: 4px; }
+  .seg button { flex: 1; height: 40px; border-radius: 10px; font-weight: 700; font-size: 14px; color: #9ca3af; transition: all .15s; }
+  .seg button.on { background: #1f2a3a; color: #fff; }
+  .nav-btn { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; height: 64px; font-size: 11px; font-weight: 600; color: #6b7280; transition: color .15s; cursor: pointer; }
+  .nav-btn.on { color: #22c55e; }
+  .nav-btn svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+  .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+  .view { display: none; }
+  .view.active { display: block; animation: fade .2s ease; }
+  @keyframes fade { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+  .badge-big { border-radius: 24px; padding: 22px 16px; text-align: center; }
+  .pulse-ok { animation: pulseOk 1.6s infinite; }
+  @keyframes pulseOk { 0%,100% { box-shadow: 0 0 0 0 rgba(34,197,94,.35); } 50% { box-shadow: 0 0 0 14px rgba(34,197,94,0); } }
+  .pulse-bad { animation: pulseBad 1.6s infinite; }
+  @keyframes pulseBad { 0%,100% { box-shadow: 0 0 0 0 rgba(239,68,68,.35); } 50% { box-shadow: 0 0 0 14px rgba(239,68,68,0); } }
+  .bar { height: 8px; background: #1f2937; border-radius: 99px; overflow: hidden; }
+  .bar > div { height: 100%; border-radius: 99px; transition: width .4s ease; }
+  #toast { position: fixed; left: 50%; bottom: calc(92px + env(safe-area-inset-bottom)); transform: translateX(-50%) translateY(20px); background: #1f2a3a; color: #fff; padding: 12px 18px; border-radius: 14px; font-weight: 600; font-size: 14px; opacity: 0; pointer-events: none; transition: all .25s; z-index: 80; max-width: 90vw; text-align: center; border: 1px solid #2d3b50; }
+  #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  #modal-back { position: fixed; inset: 0; background: rgba(0,0,0,.65); z-index: 90; display: none; align-items: flex-end; justify-content: center; }
+  #modal-back.open { display: flex; }
+  #modal { width: 100%; max-width: 520px; background: #121821; border: 1px solid #1f2937; border-radius: 24px 24px 0 0; padding: 20px 18px calc(20px + env(safe-area-inset-bottom)); max-height: 90vh; overflow-y: auto; animation: slideUp .25s ease; }
+  @keyframes slideUp { from { transform: translateY(40px); opacity: 0; } to { transform: none; opacity: 1; } }
+  textarea.inp { height: 260px; padding: 12px 14px; font-size: 15px; line-height: 1.45; font-family: ui-monospace, Menlo, Consolas, monospace; resize: none; }
+  input[type=checkbox] { width: 24px; height: 24px; accent-color: #22c55e; }
+  .mono { font-variant-numeric: tabular-nums; }
+  
+  /* LOGO ESTILIZADA */
+  .logo-box {
+    width: 46px;
+    height: 46px;
+    border-radius: 14px;
+    background: linear-gradient(135deg, #22c55e 0%, #06b6d4 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 4px 12px rgba(34, 197, 94, 0.25);
+  }
+</style>
+</head>
+<body>
 
-    function calcularGanhos() {
-      const ganhos = parseFloat(document.getElementById('valorGanhos').value) || 0;
-      const km = parseFloat(document.getElementById('kmRodados').value) || 0;
-      
-      const custoTotal = km * custosKM[veiculoAtual];
-      const lucro = ganhos - custoTotal;
+<div id="app" class="max-w-xl mx-auto">
 
-      document.getElementById('lucroLiquido').innerText = `R$ ${lucro.toFixed(2)}`;
-      document.getElementById('custoKm').innerText = `R$ ${custoTotal.toFixed(2)}`;
+  <!-- HEADER COM LOGO -->
+  <header class="px-4 pt-4 pb-2 flex items-center justify-between">
+    <div class="flex items-center gap-3">
+      <div class="logo-box">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#04210f" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M13 2L4 14h7l-1 8 9-12h-7z"/>
+        </svg>
+      </div>
+      <div>
+        <div class="flex items-center gap-1.5">
+          <h1 class="text-xl font-black leading-tight tracking-tight text-white">MotoristaEspertoAC</h1>
+          <span id="hdr-vtype" class="text-[10px] font-extrabold px-1.5 py-0.5 rounded bg-line text-brand"></span>
+        </div>
+        <p class="text-xs text-gray-400 leading-tight">Gestão de lucro para motoristas e entregadores</p>
+      </div>
+    </div>
+    <div id="hdr-date" class="text-right text-xs text-gray-400 font-semibold"></div>
+  </header>
+
+  <main class="px-4 pb-32" id="app-content-pdf">
+
+    <!-- ============ DASHBOARD ============ -->
+    <section id="view-dash" class="view active">
+      <div class="seg mt-2" id="period-seg">
+        <button data-p="today" class="on">Hoje</button>
+        <button data-p="week">7 dias</button>
+        <button data-p="month">Mês</button>
+      </div>
+
+      <div class="flex gap-2 overflow-x-auto no-scrollbar mt-3 pb-1" id="plat-chips"></div>
+
+      <div id="dash-body" class="mt-3"></div>
+
+      <!-- Botão Exportar PDF no Dashboard -->
+      <button onclick="gerarPDF()" class="w-full mt-4 bg-slate-800 hover:bg-slate-700 text-slate-100 font-bold p-3 rounded-xl text-sm flex items-center justify-center gap-2 border border-slate-700 transition-all">
+        📄 Exportar Relatório em PDF
+      </button>
+    </section>
+
+    <!-- ============ AVALIADOR ============ -->
+    <section id="view-eval" class="view">
+      <h2 class="text-2xl font-extrabold mt-2">Avaliador de corridas</h2>
+      <p class="text-sm text-gray-400 mt-1">Digite os dados da corrida e veja na hora se compensa.</p>
+
+      <div class="card p-4 mt-4 space-y-4">
+        <div>
+          <label class="lbl" for="ev-value">Valor da corrida (R$)</label>
+          <input id="ev-value" class="inp" type="text" inputmode="decimal" placeholder="Ex: 18,50" autocomplete="off">
+        </div>
+        <div>
+          <label class="lbl" for="ev-km">Distância total (buscar + levar) em KM</label>
+          <input id="ev-km" class="inp" type="text" inputmode="decimal" placeholder="Ex: 7,2" autocomplete="off">
+        </div>
+        <div>
+          <label class="lbl" for="ev-min">Tempo total estimado (min) — opcional</label>
+          <input id="ev-min" class="inp" type="text" inputmode="decimal" placeholder="Ex: 22" autocomplete="off">
+        </div>
+        <button class="btn btn-ghost" onclick="clearEval()" style="height:46px;font-size:15px">Limpar</button>
+      </div>
+
+      <div id="ev-result" class="mt-4"></div>
+    </section>
+
+    <!-- ============ REGISTRAR ============ -->
+    <section id="view-add" class="view">
+      <h2 class="text-2xl font-extrabold mt-2">Registrar dia</h2>
+      <p class="text-sm text-gray-400 mt-1">O combustível é calculado automaticamente pelos KMs.</p>
+
+      <form id="add-form" class="card p-4 mt-4 space-y-4" onsubmit="return saveEntry(event)" novalidate>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="lbl" for="f-date">Data</label>
+            <input id="f-date" class="inp" type="date" style="font-size:16px">
+          </div>
+          <div>
+            <label class="lbl" for="f-plat">Plataforma</label>
+            <select id="f-plat" class="inp" style="font-size:16px"></select>
+          </div>
+        </div>
+        <div>
+          <label class="lbl" for="f-gross">Faturamento bruto (R$)</label>
+          <input id="f-gross" class="inp" type="text" inputmode="decimal" placeholder="0,00" autocomplete="off">
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="lbl" for="f-km">KMs rodados</label>
+            <input id="f-km" class="inp" type="text" inputmode="decimal" placeholder="0" autocomplete="off">
+          </div>
+          <div>
+            <label class="lbl" for="f-hours">Horas trabalhadas</label>
+            <input id="f-hours" class="inp" type="text" inputmode="decimal" placeholder="Ex: 8,5" autocomplete="off">
+          </div>
+        </div>
+        <div>
+          <label class="lbl" for="f-extra">Gastos extras (R$) — lanche, pedágio, lavagem...</label>
+          <input id="f-extra" class="inp" type="text" inputmode="decimal" placeholder="0,00" autocomplete="off">
+        </div>
+        <label class="flex items-center gap-3 bg-soft border border-line rounded-2xl p-3" for="f-rent">
+          <input type="checkbox" id="f-rent">
+          <span class="text-sm"><span class="font-bold">Descontar aluguel/diária</span><br><span id="f-rent-info" class="text-gray-400 text-xs"></span></span>
+        </label>
+
+        <div id="f-preview" class="bg-soft border border-line rounded-2xl p-3 text-sm"></div>
+
+        <button type="submit" class="btn btn-primary">Salvar registro</button>
+      </form>
+    </section>
+
+    <!-- ============ HISTÓRICO ============ -->
+    <section id="view-hist" class="view">
+      <h2 class="text-2xl font-extrabold mt-2">Histórico</h2>
+      <div class="grid grid-cols-3 gap-2 mt-3">
+        <button class="btn btn-ghost" style="height:48px;font-size:14px" onclick="openReport('today')">📲 Dia</button>
+        <button class="btn btn-ghost" style="height:48px;font-size:14px" onclick="openReport('week')">📲 Semana</button>
+        <button class="btn btn-ghost" style="height:48px;font-size:14px" onclick="openReport('month')">📲 Mês</button>
+      </div>
+      <p class="text-xs text-gray-500 mt-1 ml-1">Gerar relatório para WhatsApp</p>
+      <div id="hist-body" class="mt-3 space-y-4"></div>
+    </section>
+
+    <!-- ============ CONFIG ============ -->
+    <section id="view-cfg" class="view">
+      <h2 class="text-2xl font-extrabold mt-2">Configurações</h2>
+      <p class="text-sm text-gray-400 mt-1">Tudo é salvo automaticamente neste aparelho.</p>
+
+      <!-- SELETOR DE MOTO / CARRO -->
+      <div class="card p-4 mt-4 space-y-3">
+        <h3 class="font-bold text-brand">🛵 / 🚗 Tipo de Veículo</h3>
+        <p class="text-xs text-gray-400">Escolha o seu veículo para carregar médias automáticas:</p>
+        <div class="grid grid-cols-2 gap-3">
+          <button type="button" id="btn-vtype-moto" class="btn btn-ghost" onclick="setVehiclePreset('moto')">🛵 Moto</button>
+          <button type="button" id="btn-vtype-carro" class="btn btn-ghost" onclick="setVehiclePreset('carro')">🚗 Carro</button>
+        </div>
+      </div>
+
+      <div class="card p-4 mt-4 space-y-4">
+        <h3 class="font-bold text-brand">⛽ Custos do Veículo</h3>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="lbl" for="c-fuel">Combustível (R$/L)</label>
+            <input id="c-fuel" class="inp" type="text" inputmode="decimal" data-k="fuelPrice" autocomplete="off">
+          </div>
+          <div>
+            <label class="lbl" for="c-kml">Autonomia (KM/L)</label>
+            <input id="c-kml" class="inp" type="text" inputmode="decimal" data-k="kmPerL" autocomplete="off">
+          </div>
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="lbl" for="c-rent">Aluguel / Diária (R$)</label>
+            <input id="c-rent" class="inp" type="text" inputmode="decimal" data-k="rent" autocomplete="off">
+          </div>
+          <div>
+            <label class="lbl" for="c-wear">Manutenção (R$/km)</label>
+            <input id="c-wear" class="inp" type="text" inputmode="decimal" data-k="wear" autocomplete="off">
+          </div>
+        </div>
+        <div>
+          <label class="lbl" for="c-avgkm">KM médio rodado por dia (para diluir aluguel)</label>
+          <input id="c-avgkm" class="inp" type="text" inputmode="decimal" data-k="avgKm" autocomplete="off">
+        </div>
+      </div>
+
+      <div class="card p-4 mt-4 space-y-4">
+        <h3 class="font-bold text-cyan2">🎯 Metas e regra de decisão</h3>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="lbl" for="c-goal">Meta diária (R$)</label>
+            <input id="c-goal" class="inp" type="text" inputmode="decimal" data-k="goal" autocomplete="off">
+          </div>
+          <div>
+            <label class="lbl" for="c-hgoal">Meta/Hora (R$)</label>
+            <input id="c-hgoal" class="inp" type="text" inputmode="decimal" data-k="hourGoal" autocomplete="off">
+          </div>
+        </div>
+        <div>
+          <label class="lbl" for="c-margin">Margem mínima por KM (%)</label>
+          <input id="c-margin" class="inp" type="text" inputmode="decimal" data-k="margin" autocomplete="off">
+          <p class="text-xs text-gray-500 mt-1 ml-1">Uma corrida só é "VALE A PENA" se o R$/KM passar o custo/KM mais essa margem.</p>
+        </div>
+        <div id="cfg-summary" class="bg-soft border border-line rounded-2xl p-3 text-sm"></div>
+      </div>
+
+      <div class="card p-4 mt-4 space-y-3">
+        <h3 class="font-bold text-amber2">🧪 Dados e instalação</h3>
+        <button class="btn btn-primary" onclick="askDemo()">Preencher dados de teste (Demo)</button>
+        <button class="btn btn-ghost" onclick="removeDemo()">Remover só os dados de teste</button>
+        <button class="btn btn-danger" onclick="askWipe()">Apagar todos os dados</button>
+        <button class="btn btn-ghost" id="btn-install" style="display:none" onclick="installApp()">📲 Instalar aplicativo</button>
+        <div class="text-xs text-gray-400 leading-relaxed bg-soft border border-line rounded-2xl p-3">
+          <b class="text-gray-200">Adicionar à Tela Inicial</b><br>
+          <b>iPhone (Safari):</b> toque em Compartilhar → "Adicionar à Tela de Início".<br>
+          <b>Android (Chrome):</b> menu ⋮ → "Instalar app" ou "Adicionar à tela inicial".
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- NAV -->
+  <nav class="fixed bottom-0 left-0 right-0 z-50 border-t border-line" style="background:rgba(11,15,20,.96);backdrop-filter:blur(10px);padding-bottom:env(safe-area-inset-bottom)">
+    <div class="max-w-xl mx-auto flex">
+      <button class="nav-btn on" data-v="dash" onclick="show('dash')">
+        <svg viewBox="0 0 24 24"><path d="M3 11l9-8 9 8v9a1 1 0 01-1 1h-5v-6H9v6H4a1 1 0 01-1-1z"/></svg>Início
+      </button>
+      <button class="nav-btn" data-v="eval" onclick="show('eval')">
+        <svg viewBox="0 0 24 24"><path d="M13 2L4 14h7l-1 8 9-12h-7z"/></svg>Avaliar
+      </button>
+      <button class="nav-btn" data-v="add" onclick="show('add')">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/></svg>Registrar
+      </button>
+      <button class="nav-btn" data-v="hist" onclick="show('hist')">
+        <svg viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>Histórico
+      </button>
+      <button class="nav-btn" data-v="cfg" onclick="show('cfg')">
+        <svg viewBox="0 0 24 24"><path d="M4 6h8M16 6h4M4 12h2M10 12h10M4 18h10M18 18h2"/><circle cx="14" cy="6" r="2"/><circle cx="8" cy="12" r="2"/><circle cx="16" cy="18" r="2"/></svg>Config
+      </button>
+    </div>
+  </nav>
+</div>
+
+<div id="toast"></div>
+<div id="modal-back" onclick="if(event.target===this)closeModal()"><div id="modal"></div></div>
+
+<script>
+/* ===================== DADOS & ESTADO ===================== */
+const LS_KEY = 'motoristaespertoac.v1';
+// Plataformas ajustadas para a realidade do Estado (Acre)
+const PLATFORMS = ['Uber', '99', 'iFood', '99Food', 'Particular'];
+const PLAT_COLOR = { 'Uber': '#e5e7eb', '99': '#facc15', 'iFood': '#ef4444', '99Food': '#f97316', 'Particular': '#38bdf8' };
+const DEFAULTS = { vehicleType: 'carro', fuelPrice: 6.00, kmPerL: 11, rent: 0, wear: 0.10, avgKm: 150, goal: 150, hourGoal: 25, margin: 40 };
+
+let memoryStore = null;
+function loadState() {
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    if (raw) {
+      const s = JSON.parse(raw);
+      if (s && Array.isArray(s.entries)) {
+        return { settings: Object.assign({}, DEFAULTS, s.settings || {}), entries: s.entries };
+      }
     }
+  } catch (e) { if (memoryStore) return memoryStore; }
+  return { settings: Object.assign({}, DEFAULTS), entries: [] };
+}
+let state = loadState();
+function saveState() {
+  memoryStore = state;
+  try { localStorage.setItem(LS_KEY, JSON.stringify(state)); }
+  catch (e) { toast('⚠️ Não foi possível salvar neste navegador'); }
+}
 
-    function gerarPDF() {
-      const elemento = document.getElementById('app-content');
-      const opcoes = {
-        margin:       10,
-        filename:     'Relatorio_MotoristaEspertoAC.pdf',
-        image:        { type: 'jpeg', quality: 0.98 },
-        html2canvas:  { scale: 2 },
-        jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
-      };
+const ui = { view: 'dash', period: 'today', platform: 'Todos', histDays: 14, reportPeriod: 'today' };
 
-      html2pdf().set(opcoes).from(elemento).save();
-    }
-  </script>
-</body>
-</html>
+/* ===================== HELPERS ===================== */
+const brl = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
+const money = n => brl.format(isFinite(n) ? n : 0).replace(/\u00a0/g, ' ');
+const n1 = n => (isFinite(n) ? n : 0).toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+const n2 = n => (isFinite(n) ? n : 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const hm = h => { const m = Math.round((h || 0) * 60); return Math.floor(m / 60) + 'h' + String(m % 60).padSt
