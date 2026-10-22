@@ -1,0 +1,787 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Motorista Esperto AC - Gestão de Lucro Real</title>
+<meta name="description" content="Motorista Esperto AC: calcule seu lucro real, custo por KM e avalie corridas na hora.">
+<meta name="theme-color" content="#0b0f14">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Motorista Esperto AC">
+<meta name="application-name" content="Motorista Esperto AC">
+
+<!-- Ícones e Manifesto PWA -->
+<link rel="icon" type="image/png" href="logo.png">
+<link rel="apple-touch-icon" href="logo.png">
+<link rel="manifest" href="manifest.json">
+
+<script src="https://cdn.tailwindcss.com"></script>
+<!-- Biblioteca para exportar relatório em PDF -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        colors: {
+          bg: '#0b0f14', card: '#121821', line: '#1f2937', soft: '#0f141b',
+          brand: '#22c55e', amber2: '#f59e0b', cyan2: '#22d3ee'
+        },
+        fontFamily: { sans: ['Inter', 'system-ui', '-apple-system', 'Segoe UI', 'Roboto', 'sans-serif'] }
+      }
+    }
+  }
+</script>
+<style>
+  * { -webkit-tap-highlight-color: transparent; box-sizing: border-box; }
+  html, body { background: #0b0f14; color: #e5e7eb; margin: 0; overscroll-behavior-y: none; }
+  body { font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; padding-top: env(safe-area-inset-top); }
+  .card { background: #121821; border: 1px solid #1f2937; border-radius: 20px; }
+  .inp { width: 100%; height: 54px; background: #0f141b; border: 1.5px solid #1f2937; border-radius: 14px; padding: 0 14px; font-size: 18px; color: #f3f4f6; outline: none; transition: border-color .15s; -webkit-appearance: none; appearance: none; }
+  .inp:focus { border-color: #22c55e; }
+  select.inp { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='%239ca3af' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 12px center; padding-right: 40px; }
+  .lbl { display: block; font-size: 12px; font-weight: 600; color: #9ca3af; letter-spacing: .04em; text-transform: uppercase; margin: 0 0 6px 2px; }
+  .btn { height: 56px; border-radius: 16px; font-weight: 700; font-size: 17px; width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px; transition: transform .08s, opacity .15s; }
+  .btn:active { transform: scale(.97); opacity: .9; }
+  .btn-primary { background: #22c55e; color: #052e16; }
+  .btn-ghost { background: #172030; color: #e5e7eb; border: 1px solid #263244; }
+  .btn-danger { background: #3b1219; color: #fca5a5; border: 1px solid #5b1c26; }
+  .chip { flex: 0 0 auto; height: 40px; padding: 0 16px; border-radius: 999px; border: 1.5px solid #263244; background: #0f141b; color: #cbd5e1; font-weight: 600; font-size: 14px; white-space: nowrap; transition: all .15s; }
+  .chip.on { background: #22c55e; border-color: #22c55e; color: #052e16; }
+  .seg { display: flex; background: #0f141b; border: 1px solid #1f2937; border-radius: 14px; padding: 4px; }
+  .seg button { flex: 1; height: 40px; border-radius: 10px; font-weight: 700; font-size: 14px; color: #9ca3af; transition: all .15s; }
+  .seg button.on { background: #1f2a3a; color: #fff; }
+  .nav-btn { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; height: 64px; font-size: 11px; font-weight: 600; color: #6b7280; transition: color .15s; cursor: pointer; }
+  .nav-btn.on { color: #22c55e; }
+  .nav-btn svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+  .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+  .view { display: none; }
+  .view.active { display: block; animation: fade .2s ease; }
+  @keyframes fade { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+  .badge-big { border-radius: 24px; padding: 22px 16px; text-align: center; }
+  .pulse-ok { animation: pulseOk 1.6s infinite; }
+  @keyframes pulseOk { 0%,100% { box-shadow: 0 0 0 0 rgba(34,197,94,.35); } 50% { box-shadow: 0 0 0 14px rgba(34,197,94,0); } }
+  .pulse-bad { animation: pulseBad 1.6s infinite; }
+  @keyframes pulseBad { 0%,100% { box-shadow: 0 0 0 0 rgba(239,68,68,.35); } 50% { box-shadow: 0 0 0 14px rgba(239,68,68,0); } }
+  .bar { height: 8px; background: #1f2937; border-radius: 99px; overflow: hidden; }
+  .bar > div { height: 100%; border-radius: 99px; transition: width .4s ease; }
+  #toast { position: fixed; left: 50%; bottom: calc(92px + env(safe-area-inset-bottom)); transform: translateX(-50%) translateY(20px); background: #1f2a3a; color: #fff; padding: 12px 18px; border-radius: 14px; font-weight: 600; font-size: 14px; opacity: 0; pointer-events: none; transition: all .25s; z-index: 80; max-width: 90vw; text-align: center; border: 1px solid #2d3b50; }
+  #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  #modal-back { position: fixed; inset: 0; background: rgba(0,0,0,.65); z-index: 90; display: none; align-items: flex-end; justify-content: center; }
+  #modal-back.open { display: flex; }
+  #modal { width: 100%; max-width: 520px; background: #121821; border: 1px solid #1f2937; border-radius: 24px 24px 0 0; padding: 20px 18px calc(20px + env(safe-area-inset-bottom)); max-height: 90vh; overflow-y: auto; animation: slideUp .25s ease; }
+  @keyframes slideUp { from { transform: translateY(40px); opacity: 0; } to { transform: none; opacity: 1; } }
+  textarea.inp { height: 200px; padding: 12px 14px; font-size: 14px; line-height: 1.45; font-family: ui-monospace, Menlo, Consolas, monospace; resize: none; }
+  input[type=checkbox] { width: 24px; height: 24px; accent-color: #22c55e; }
+  .mono { font-variant-numeric: tabular-nums; }
+  
+  .logo-box {
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #0f141b;
+    border: 1px solid #263244;
+  }
+  .logo-box img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+</style>
+</head>
+<body>
+
+<div id="app" class="max-w-xl mx-auto">
+
+  <!-- CABEÇALHO -->
+  <header class="px-4 pt-4 pb-2 flex items-center justify-between">
+    <div class="flex items-center gap-3">
+      <div class="logo-box">
+        <img src="logo.png" alt="Logo Motorista Esperto AC" onerror="this.onerror=null; this.src='data:image/svg+xml;utf8,<svg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 24 24\' fill=\'%2322c55e\'><path d=\'M13 2L4 14h7l-1 8 9-12h-7z\'/></svg>';">
+      </div>
+      <div>
+        <div class="flex items-center gap-1.5">
+          <h1 class="text-xl font-black leading-tight tracking-tight text-white">Motorista Esperto AC</h1>
+          <span id="hdr-vtype" class="text-[10px] font-extrabold px-1.5 py-0.5 rounded bg-line text-brand">🚗 CARRO</span>
+        </div>
+        <p class="text-xs text-gray-400 leading-tight">Gestão de lucro para motoristas e entregadores</p>
+      </div>
+    </div>
+    <div id="hdr-date" class="text-right text-xs text-gray-400 font-semibold"></div>
+  </header>
+
+  <main class="px-4 pb-32">
+
+    <!-- ============ DASHBOARD ============ -->
+    <section id="view-dash" class="view active">
+      <div class="seg mt-2" id="period-seg">
+        <button data-p="today" class="on" onclick="setPeriod('today')">Hoje</button>
+        <button data-p="week" onclick="setPeriod('week')">7 dias</button>
+        <button data-p="month" onclick="setPeriod('month')">Mês</button>
+      </div>
+
+      <div class="flex gap-2 overflow-x-auto no-scrollbar mt-3 pb-1" id="plat-chips"></div>
+
+      <div id="dash-body" class="mt-3"></div>
+    </section>
+
+    <!-- ============ AVALIADOR ============ -->
+    <section id="view-eval" class="view">
+      <h2 class="text-2xl font-extrabold mt-2">Avaliador de corridas</h2>
+      <p class="text-sm text-gray-400 mt-1">Digite os dados da corrida e veja na hora se compensa.</p>
+
+      <div class="card p-4 mt-4 space-y-4">
+        <div>
+          <label class="lbl" for="ev-value">Valor da corrida (R$)</label>
+          <input id="ev-value" class="inp" type="text" inputmode="decimal" placeholder="Ex: 18,50" autocomplete="off" oninput="updateEval()">
+        </div>
+        <div>
+          <label class="lbl" for="ev-km">Distância total (buscar + levar) em KM</label>
+          <input id="ev-km" class="inp" type="text" inputmode="decimal" placeholder="Ex: 7,2" autocomplete="off" oninput="updateEval()">
+        </div>
+        <div>
+          <label class="lbl" for="ev-min">Tempo total estimado (min) — opcional</label>
+          <input id="ev-min" class="inp" type="text" inputmode="decimal" placeholder="Ex: 22" autocomplete="off" oninput="updateEval()">
+        </div>
+        <button class="btn btn-ghost" onclick="clearEval()" style="height:46px;font-size:15px">Limpar</button>
+      </div>
+
+      <div id="ev-result" class="mt-4"></div>
+    </section>
+
+    <!-- ============ REGISTRAR ============ -->
+    <section id="view-add" class="view">
+      <h2 class="text-2xl font-extrabold mt-2">Registrar dia</h2>
+      <p class="text-sm text-gray-400 mt-1">O custo operacional é calculated automaticamente pelos KMs.</p>
+
+      <form id="add-form" class="card p-4 mt-4 space-y-4" onsubmit="return saveEntry(event)" novalidate>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="lbl" for="f-date">Data</label>
+            <input id="f-date" class="inp" type="date" style="font-size:16px">
+          </div>
+          <div>
+            <label class="lbl" for="f-plat">Plataforma</label>
+            <select id="f-plat" class="inp" style="font-size:16px"></select>
+          </div>
+        </div>
+        <div>
+          <label class="lbl" for="f-gross">Faturamento bruto (R$)</label>
+          <input id="f-gross" class="inp" type="text" inputmode="decimal" placeholder="0,00" autocomplete="off" oninput="updatePreview()">
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="lbl" for="f-km">KMs rodados</label>
+            <input id="f-km" class="inp" type="text" inputmode="decimal" placeholder="0" autocomplete="off" oninput="updatePreview()">
+          </div>
+          <div>
+            <label class="lbl" for="f-hours">Horas trabalhadas</label>
+            <input id="f-hours" class="inp" type="text" inputmode="decimal" placeholder="Ex: 8,5" autocomplete="off" oninput="updatePreview()">
+          </div>
+        </div>
+        <div>
+          <label class="lbl" for="f-extra">Gastos extras (R$) — lanche, recarga, lavagem...</label>
+          <input id="f-extra" class="inp" type="text" inputmode="decimal" placeholder="0,00" autocomplete="off" oninput="updatePreview()">
+        </div>
+        <label class="flex items-center gap-3 bg-soft border border-line rounded-2xl p-3" for="f-rent">
+          <input type="checkbox" id="f-rent" onchange="updatePreview()">
+          <span class="text-sm"><span class="font-bold">Descontar aluguel/diária</span><br><span id="f-rent-info" class="text-gray-400 text-xs"></span></span>
+        </label>
+
+        <div id="f-preview" class="bg-soft border border-line rounded-2xl p-3 text-sm"></div>
+
+        <button type="submit" class="btn btn-primary">Salvar registro</button>
+      </form>
+    </section>
+
+    <!-- ============ HISTÓRICO ============ -->
+    <section id="view-hist" class="view">
+      <h2 class="text-2xl font-extrabold mt-2">Histórico & Relatórios</h2>
+      <div class="grid grid-cols-3 gap-2 mt-3">
+        <button class="btn btn-ghost" style="height:48px;font-size:14px" onclick="openReport('today')">📲 Dia</button>
+        <button class="btn btn-ghost" style="height:48px;font-size:14px" onclick="openReport('week')">📲 Semana</button>
+        <button class="btn btn-ghost" style="height:48px;font-size:14px" onclick="openReport('month')">📲 Mês</button>
+      </div>
+      <p class="text-xs text-gray-500 mt-1 ml-1">Gerar relatório em texto para WhatsApp ou PDF</p>
+      <div id="hist-body" class="mt-3 space-y-4"></div>
+    </section>
+
+    <!-- ============ CONFIGURAÇÕES ============ -->
+    <section id="view-cfg" class="view">
+      <h2 class="text-2xl font-extrabold mt-2">Configurações</h2>
+      <p class="text-sm text-gray-400 mt-1">Tudo é salvo automaticamente neste aparelho.</p>
+
+      <!-- SELETOR DE MOTO / CARRO / ELÉTRICO -->
+      <div class="card p-4 mt-4 space-y-3">
+        <h3 class="font-bold text-brand">🛵 / 🚗 / ⚡ Tipo de Veículo</h3>
+        <p class="text-xs text-gray-400">Escolha o seu veículo para carregar médias automáticas:</p>
+        <div class="grid grid-cols-3 gap-2">
+          <button type="button" id="btn-vtype-moto" class="btn btn-ghost" style="font-size:13px;padding:0" onclick="setVehiclePreset('moto')">🛵 Moto</button>
+          <button type="button" id="btn-vtype-carro" class="btn btn-ghost" style="font-size:13px;padding:0" onclick="setVehiclePreset('carro')">🚗 Carro</button>
+          <button type="button" id="btn-vtype-eletrico" class="btn btn-ghost" style="font-size:13px;padding:0" onclick="setVehiclePreset('eletrico')">⚡ Elétrico</button>
+        </div>
+      </div>
+
+      <div class="card p-4 mt-4 space-y-4">
+        <h3 class="font-bold text-brand" id="cfg-fuel-title">⛽ Custos do Veículo</h3>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="lbl" id="lbl-fuel-price" for="c-fuel">Combustível (R$/L)</label>
+            <input id="c-fuel" class="inp" type="text" inputmode="decimal" data-k="fuelPrice" autocomplete="off" oninput="saveCfgInput(this)">
+          </div>
+          <div>
+            <label class="lbl" id="lbl-fuel-kml" for="c-kml">Autonomia (KM/L)</label>
+            <input id="c-kml" class="inp" type="text" inputmode="decimal" data-k="kmPerL" autocomplete="off" oninput="saveCfgInput(this)">
+          </div>
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="lbl" for="c-rent">Aluguel / Diária (R$)</label>
+            <input id="c-rent" class="inp" type="text" inputmode="decimal" data-k="rent" autocomplete="off" oninput="saveCfgInput(this)">
+          </div>
+          <div>
+            <label class="lbl" for="c-wear">Manutenção (R$/km)</label>
+            <input id="c-wear" class="inp" type="text" inputmode="decimal" data-k="wear" autocomplete="off" oninput="saveCfgInput(this)">
+          </div>
+        </div>
+        <div>
+          <label class="lbl" for="c-avgkm">KM médio rodado por dia (para diluir aluguel)</label>
+          <input id="c-avgkm" class="inp" type="text" inputmode="decimal" data-k="avgKm" autocomplete="off" oninput="saveCfgInput(this)">
+        </div>
+      </div>
+
+      <div class="card p-4 mt-4 space-y-4">
+        <h3 class="font-bold text-cyan2">🎯 Metas e regra de decisão</h3>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="lbl" for="c-goal">Meta diária (R$)</label>
+            <input id="c-goal" class="inp" type="text" inputmode="decimal" data-k="goal" autocomplete="off" oninput="saveCfgInput(this)">
+          </div>
+          <div>
+            <label class="lbl" for="c-hgoal">Meta/Hora (R$)</label>
+            <input id="c-hgoal" class="inp" type="text" inputmode="decimal" data-k="hourGoal" autocomplete="off" oninput="saveCfgInput(this)">
+          </div>
+        </div>
+        <div>
+          <label class="lbl" for="c-margin">Margem mínima por KM (%)</label>
+          <input id="c-margin" class="inp" type="text" inputmode="decimal" data-k="margin" autocomplete="off" oninput="saveCfgInput(this)">
+          <p class="text-xs text-gray-500 mt-1 ml-1">Uma corrida só é "VALE A PENA" se o R$/KM passar o custo/KM mais essa margem.</p>
+        </div>
+        <div id="cfg-summary" class="bg-soft border border-line rounded-2xl p-3 text-sm"></div>
+      </div>
+
+      <!-- CARD PIX -->
+      <div class="card p-4 mt-4 space-y-3 bg-gradient-to-b from-[#121821] to-[#0f141b] border-emerald-500/30">
+        <div class="flex items-center gap-2">
+          <span class="text-xl">☕</span>
+          <h3 class="font-bold text-emerald-400">Apoie o Desenvolvedor</h3>
+        </div>
+        <p class="text-xs text-gray-300 leading-relaxed">
+          Este aplicativo é <b>100% gratuito</b> para ajudar os motoristas do Acre. Se o app te ajuda no dia a dia, apoie o projeto com qualquer valor!
+        </p>
+        <div class="bg-soft border border-line rounded-xl p-3 flex items-center justify-between gap-2">
+          <div>
+            <div class="text-[10px] uppercase font-bold text-gray-500">Chave Pix (CPF)</div>
+            <div class="text-sm font-extrabold text-white mono">042.093.092-22</div>
+          </div>
+          <button type="button" class="btn btn-primary" style="height:38px; width:auto; padding:0 12px; font-size:13px;" onclick="copyPix()">
+            📋 Copiar Pix
+          </button>
+        </div>
+      </div>
+
+      <div class="card p-4 mt-4 space-y-3">
+        <h3 class="font-bold text-amber2">🧪 Dados e instalação</h3>
+        <button class="btn btn-primary" onclick="askDemo()">Preencher dados de teste (Demo)</button>
+        <button class="btn btn-ghost" onclick="removeDemo()">Remover só os dados de teste</button>
+        <button class="btn btn-danger" onclick="askWipe()">Apagar todos os dados</button>
+        <button class="btn btn-ghost" id="btn-install" style="display:none" onclick="installApp()">📲 Instalar aplicativo</button>
+        <div class="text-xs text-gray-400 leading-relaxed bg-soft border border-line rounded-2xl p-3">
+          <b class="text-gray-200">Adicionar à Tela Inicial</b><br>
+          <b>iPhone (Safari):</b> toque em Compartilhar → "Adicionar à Tela de Início".<br>
+          <b>Android (Chrome):</b> menu ⋮ → "Instalar app" ou "Adicionar à tela inicial".
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- NAV -->
+  <nav class="fixed bottom-0 left-0 right-0 z-50 border-t border-line" style="background:rgba(11,15,20,.96);backdrop-filter:blur(10px);padding-bottom:env(safe-area-inset-bottom)">
+    <div class="max-w-xl mx-auto flex">
+      <button class="nav-btn on" data-v="dash" onclick="show('dash')">
+        <svg viewBox="0 0 24 24"><path d="M3 11l9-8 9 8v9a1 1 0 01-1 1h-5v-6H9v6H4a1 1 0 01-1-1z"/></svg>Início
+      </button>
+      <button class="nav-btn" data-v="eval" onclick="show('eval')">
+        <svg viewBox="0 0 24 24"><path d="M13 2L4 14h7l-1 8 9-12h-7z"/></svg>Avaliar
+      </button>
+      <button class="nav-btn" data-v="add" onclick="show('add')">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/></svg>Registrar
+      </button>
+      <button class="nav-btn" data-v="hist" onclick="show('hist')">
+        <svg viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>Histórico
+      </button>
+      <button class="nav-btn" data-v="cfg" onclick="show('cfg')">
+        <svg viewBox="0 0 24 24"><path d="M4 6h8M16 6h4M4 12h2M10 12h10M4 18h10M18 18h2"/><circle cx="14" cy="6" r="2"/><circle cx="8" cy="12" r="2"/><circle cx="16" cy="18" r="2"/></svg>Config
+      </button>
+    </div>
+  </nav>
+</div>
+
+<div id="toast"></div>
+<div id="modal-back" onclick="if(event.target===this)closeModal()"><div id="modal"></div></div>
+
+<script>
+/* ===================== DADOS & ESTADO ===================== */
+const LS_KEY = 'motoristaespertoac_v5';
+const PLATFORMS = ['Uber', '99', 'iFood', '99Food', 'InDrive', 'Particular'];
+const DEFAULTS = { vehicleType: 'carro', fuelPrice: 6.00, kmPerL: 11, rent: 0, wear: 0.10, avgKm: 150, goal: 150, hourGoal: 25, margin: 40 };
+
+function loadState() {
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    if (raw) {
+      const s = JSON.parse(raw);
+      if (s && Array.isArray(s.entries)) {
+        return { settings: Object.assign({}, DEFAULTS, s.settings || {}), entries: s.entries };
+      }
+    }
+  } catch (e) {}
+  return { settings: Object.assign({}, DEFAULTS), entries: [] };
+}
+
+let state = loadState();
+
+function saveState() {
+  try { 
+    localStorage.setItem(LS_KEY, JSON.stringify(state)); 
+  } catch (e) { 
+    toast('⚠️ Não foi possível salvar'); 
+  }
+}
+
+const ui = { view: 'dash', period: 'today', platform: 'Todos' };
+
+/* ===================== HELPERS ===================== */
+const brl = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
+const money = n => brl.format(isFinite(n) ? n : 0).replace(/\u00a0/g, ' ');
+const n1 = n => (isFinite(n) ? n : 0).toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+const hm = h => { const m = Math.round((h || 0) * 60); return Math.floor(m / 60) + 'h' + String(m % 60).padStart(2, '0'); };
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const $ = id => document.getElementById(id);
+
+function parseNum(v) {
+  if (v === null || v === undefined) return NaN;
+  let s = String(v).trim().replace(/\s/g, '').replace('R$', '');
+  if (!s) return NaN;
+  if (s.includes(',') && s.includes('.')) s = s.replace(/\./g, '').replace(',', '.');
+  else s = s.replace(',', '.');
+  const n = parseFloat(s);
+  return isFinite(n) ? n : NaN;
+}
+
+function toast(msg) {
+  const t = $('toast');
+  if (!t) return;
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2500);
+}
+
+function formatDate(iso) {
+  if (!iso) return '';
+  const [y, m, d] = iso.split('-');
+  return `${d}/${m}/${y}`;
+}
+
+function getTodayIso() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+function copyPix() {
+  const pixKey = "042.093.092-22";
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(pixKey).then(() => toast('📋 Chave Pix copiada!'));
+  } else {
+    toast('Pix: 042.093.092-22');
+  }
+}
+
+/* ===================== NAVEGAÇÃO ===================== */
+function show(vId) {
+  ui.view = vId;
+  document.querySelectorAll('.view').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(el => el.classList.remove('on'));
+  
+  const targetView = $(`view-${vId}`);
+  if (targetView) targetView.classList.add('active');
+  
+  const targetNav = document.querySelector(`.nav-btn[data-v="${vId}"]`);
+  if (targetNav) targetNav.classList.add('on');
+  
+  window.scrollTo(0, 0);
+  renderCurrentView();
+}
+
+function renderCurrentView() {
+  updateHeader();
+  if (ui.view === 'dash') renderDash();
+  else if (ui.view === 'eval') renderEval();
+  else if (ui.view === 'add') renderAdd();
+  else if (ui.view === 'hist') renderHist();
+  else if (ui.view === 'cfg') renderCfg();
+}
+
+function updateHeader() {
+  const now = new Date();
+  const options = { weekday: 'short', day: 'numeric', month: 'short' };
+  const hDate = $('hdr-date');
+  if (hDate) hDate.textContent = now.toLocaleDateString('pt-BR', options);
+  
+  const type = (state.settings && state.settings.vehicleType) || 'carro';
+  const hType = $('hdr-vtype');
+  if (hType) hType.textContent = type === 'eletrico' ? '⚡ ELÉTRICO' : (type === 'moto' ? '🛵 MOTO' : '🚗 CARRO');
+}
+
+/* ===================== CÁLCULOS ===================== */
+function calcCostPerKm(s) {
+  if (!s) s = DEFAULTS;
+  const fuel = s.fuelPrice || 6;
+  const kml = s.kmPerL || 10;
+  const wear = s.wear || 0.1;
+  return (fuel / kml) + wear;
+}
+
+function filterEntries(period) {
+  const now = new Date();
+  const todayStr = getTodayIso();
+  const entries = state.entries || [];
+  return entries.filter(e => {
+    if (ui.platform !== 'Todos' && e.platform !== ui.platform) return false;
+    if (period === 'today') return e.date === todayStr;
+    if (period === 'week') {
+      const d = new Date(e.date + 'T00:00:00');
+      const diff = (now - d) / (1000 * 60 * 60 * 24);
+      return diff >= 0 && diff < 7;
+    }
+    if (period === 'month') return e.date.substring(0, 7) === todayStr.substring(0, 7);
+    return true;
+  });
+}
+
+function summarize(entries) {
+  let gross = 0, km = 0, hours = 0, extra = 0, net = 0, cost = 0;
+  const s = state.settings || DEFAULTS;
+  const dailyRent = s.avgKm > 0 ? (s.rent / s.avgKm) : 0;
+
+  (entries || []).forEach(e => {
+    gross += (e.gross || 0);
+    km += (e.km || 0);
+    hours += (e.hours || 0);
+    extra += (e.extra || 0);
+    const cFuel = (e.km || 0) * (s.fuelPrice / (s.kmPerL || 1));
+    const cWear = (e.km || 0) * s.wear;
+    const cRent = e.useRent ? ((e.km || 0) * dailyRent) : 0;
+    const cTotal = cFuel + cWear + cRent + (e.extra || 0);
+    cost += cTotal;
+    net += ((e.gross || 0) - cTotal);
+  });
+  return { gross, km, hours, extra, net, cost };
+}
+
+/* ===================== DASHBOARD ===================== */
+function setPeriod(p) {
+  ui.period = p;
+  document.querySelectorAll('#period-seg button').forEach(b => {
+    b.classList.toggle('on', b.dataset.p === p);
+  });
+  renderDash();
+}
+
+function renderPlatChips() {
+  const c = $('plat-chips');
+  if (!c) return;
+  let html = `<button class="chip ${ui.platform === 'Todos' ? 'on' : ''}" onclick="setPlat('Todos')">Todas</button>`;
+  PLATFORMS.forEach(p => {
+    html += `<button class="chip ${ui.platform === p ? 'on' : ''}" onclick="setPlat('${p}')">${esc(p)}</button>`;
+  });
+  c.innerHTML = html;
+}
+
+function setPlat(p) {
+  ui.platform = p;
+  renderPlatChips();
+  renderDash();
+}
+
+function renderDash() {
+  renderPlatChips();
+  const entries = filterEntries(ui.period);
+  const sum = summarize(entries);
+  const s = state.settings || DEFAULTS;
+
+  let goal = s.goal || 150;
+  if (ui.period === 'week') goal = (s.goal || 150) * 7;
+  if (ui.period === 'month') goal = (s.goal || 150) * 30;
+  const pct = goal > 0 ? Math.min(Math.round((sum.net / goal) * 100), 999) : 0;
+
+  const hrNet = sum.hours > 0 ? (sum.net / sum.hours) : 0;
+  const kmNet = sum.km > 0 ? (sum.net / sum.km) : 0;
+
+  let hHTML = '';
+  if (ui.period === 'today') {
+    const ok = sum.net >= (s.goal || 150);
+    hHTML = `
+      <div class="card badge-big ${ok ? 'pulse-ok border-green-500/50' : ''} bg-gradient-to-b from-[#121821] to-[#0f141b]">
+        <div class="text-xs font-bold text-gray-400 uppercase tracking-widest">Lucro Líquido Hoje</div>
+        <div class="text-4xl font-black text-white mt-1 mono">${money(sum.net)}</div>
+        <div class="text-xs text-gray-400 mt-1">Meta: ${money(s.goal)} (${pct}%)</div>
+        <div class="bar mt-3"><div style="width:${Math.min(pct, 100)}%;background:${ok ? '#22c55e' : '#22d3ee'}"></div></div>
+      </div>`;
+  } else {
+    hHTML = `
+      <div class="card p-4 bg-gradient-to-b from-[#121821] to-[#0f141b]">
+        <div class="text-xs font-bold text-gray-400 uppercase tracking-widest">Resumo do Período</div>
+        <div class="text-3xl font-black text-white mt-1 mono">${money(sum.net)}</div>
+        <div class="flex justify-between text-xs text-gray-400 mt-2 pt-2 border-t border-line">
+          <span>Faturamento: <b>${money(sum.gross)}</b></span>
+          <span>Custos: <b>${money(sum.cost)}</b></span>
+          <span>Meta: <b>${pct}%</b></span>
+        </div>
+      </div>`;
+  }
+
+  let html = hHTML + `
+    <div class="grid grid-cols-2 gap-3 mt-3">
+      <div class="card p-3.5">
+        <div class="text-xs font-bold text-gray-400 uppercase">Por Hora Trabalhada</div>
+        <div class="text-2xl font-black text-white mt-1 mono">${money(hrNet)}/h</div>
+        <div class="text-xs text-gray-500 mt-0.5">Meta/h: ${money(s.hourGoal)} • ${hm(sum.hours)}</div>
+      </div>
+      <div class="card p-3.5">
+        <div class="text-xs font-bold text-gray-400 uppercase">Por KM Rodado</div>
+        <div class="text-2xl font-black text-white mt-1 mono">${money(kmNet)}/km</div>
+        <div class="text-xs text-gray-500 mt-0.5">${n1(sum.km)} KM rodados</div>
+      </div>
+    </div>`;
+
+  const dBody = $('dash-body');
+  if (dBody) dBody.innerHTML = html;
+}
+
+/* ===================== AVALIADOR ===================== */
+function clearEval() {
+  if ($('ev-value')) $('ev-value').value = '';
+  if ($('ev-km')) $('ev-km').value = '';
+  if ($('ev-min')) $('ev-min').value = '';
+  updateEval();
+}
+
+function updateEval() {
+  const v = parseNum($('ev-value').value);
+  const km = parseNum($('ev-km').value);
+  const min = parseNum($('ev-min').value);
+  const res = $('ev-result');
+  if (!res) return;
+
+  if (isNaN(v) || isNaN(km) || km <= 0) {
+    res.innerHTML = `<div class="card p-4 text-center text-sm text-gray-500">Digite o valor e os KM para avaliar.</div>`;
+    return;
+  }
+
+  const s = state.settings || DEFAULTS;
+  const costKm = calcCostPerKm(s);
+  const totalCost = km * costKm;
+  const net = v - totalCost;
+  const rkm = v / km;
+  const minValid = isNaN(min) || min <= 0 ? 3 : min;
+  const rhr = (net / minValid) * 60;
+  const minMarginRkm = costKm * (1 + ((s.margin || 40) / 100));
+  const isGood = rkm >= minMarginRkm && net > 0;
+
+  res.innerHTML = `
+    <div class="card p-5 ${isGood ? 'pulse-ok border-green-500/40 bg-gradient-to-b from-[#121821] to-[#0f141b]' : 'pulse-bad border-red-500/40 bg-gradient-to-b from-[#121821] to-[#171012]'}">
+      <div class="flex items-center justify-between">
+        <span class="text-xs font-extrabold uppercase px-2.5 py-1 rounded-full ${isGood ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}">
+          ${isGood ? '✅ VALE A PENA' : '❌ CORRIDA FRACA'}
+        </span>
+        <span class="text-sm font-bold text-gray-300 mono">Líquido: ${money(net)}</span>
+      </div>
+      <div class="grid grid-cols-3 gap-2 mt-4 pt-3 border-t border-line text-center">
+        <div>
+          <div class="text-[10px] text-gray-400 uppercase font-bold">Bruto/KM</div>
+          <div class="text-base font-black text-white mono mt-0.5">${money(rkm)}</div>
+        </div>
+        <div>
+          <div class="text-[10px] text-gray-400 uppercase font-bold">Custo/KM</div>
+          <div class="text-base font-black text-red-400 mono mt-0.5">${money(costKm)}</div>
+        </div>
+        <div>
+          <div class="text-[10px] text-gray-400 uppercase font-bold">Est. Hora</div>
+          <div class="text-base font-black text-white mono mt-0.5">${money(rhr)}</div>
+        </div>
+      </div>
+    </div>`;
+}
+
+/* ===================== REGISTRAR ===================== */
+function renderAdd() {
+  if ($('f-date'))$('f-date').value = getTodayIso();
+  const sel = $('f-plat');
+  if (sel) sel.innerHTML = PLATFORMS.map(p => `<option value="${esc(p)}">${esc(p)}</option>`).join('');
+  const s = state.settings || DEFAULTS;
+  if ($('f-rent'))$('f-rent').checked = (s.rent || 0) > 0;
+  if ($('f-rent-info'))$('f-rent-info').textContent = `Aluguel cadastrado: ${money(s.rent || 0)} / dia base`;
+  updatePreview();
+}
+
+function updatePreview() {
+  const gross = parseNum($('f-gross') ?$('f-gross').value : 0) || 0;
+  const km = parseNum($('f-km') ?$('f-km').value : 0) || 0;
+  const extra = parseNum($('f-extra') ?$('f-extra').value : 0) || 0;
+  const useRent = $('f-rent') ?$('f-rent').checked : false;
+
+  const s = state.settings || DEFAULTS;
+  const dailyRent = s.avgKm > 0 ? (s.rent / s.avgKm) : 0;
+  const cFuel = km * (s.fuelPrice / (s.kmPerL || 1));
+  const cWear = km * s.wear;
+  const cRent = useRent ? (km * dailyRent) : 0;
+  const cost = cFuel + cWear + cRent + extra;
+  const net = gross - cost;
+
+  const fPrev = $('f-preview');
+  if (fPrev) {
+    fPrev.innerHTML = `
+      <div class="font-bold text-gray-200 mb-1">Prévia do dia:</div>
+      <div class="flex justify-between text-xs text-gray-400"><span>Operacional:</span><span class="mono">${money(cFuel + cWear)}</span></div>
+      ${useRent ? `<div class="flex justify-between text-xs text-gray-400"><span>Aluguel proporcional:</span><span class="mono">${money(cRent)}</span></div>` : ''}
+      ${extra > 0 ? `<div class="flex justify-between text-xs text-gray-400"><span>Gastos extras:</span><span class="mono">${money(extra)}</span></div>` : ''}
+      <div class="flex justify-between text-sm font-bold text-brand mt-2 pt-2 border-t border-line"><span>Lucro Líquido:</span><span class="mono">${money(net)}</span></div>
+    `;
+  }
+}
+
+function saveEntry(e) {
+  e.preventDefault();
+  const date = $('f-date').value;
+  const platform = $('f-plat').value;
+  const gross = parseNum($('f-gross').value);
+  const km = parseNum($('f-km').value);
+  const hours = parseNum($('f-hours').value);
+  const extra = parseNum($('f-extra').value) || 0;
+  const useRent = $('f-rent').checked;
+
+  if (!date) { toast('⚠️ Informe a data'); return false; }
+  if (isNaN(gross) || gross < 0) { toast('⚠️ Faturamento inválido'); return false; }
+  if (isNaN(km) || km < 0) { toast('⚠️ KM inválido'); return false; }
+
+  const entry = { id: 'e_' + Date.now(), date, platform, gross, km, hours: isNaN(hours) ? 0 : hours, extra, useRent };
+  state.entries.unshift(entry);
+  saveState();
+  toast('✅ Dia registrado com sucesso!');
+  $('f-gross').value = '';$('f-km').value = '';
+  $('f-hours').value = '';$('f-extra').value = '';
+  show('dash');
+  return false;
+}
+
+/* ===================== HISTÓRICO ===================== */
+function renderHist() {
+  const hb = $('hist-body');
+  if (!hb) return;
+  if (!state.entries || state.entries.length === 0) {
+    hb.innerHTML = `<div class="card p-6 text-center text-gray-500 text-sm">Nenhum registro encontrado.</div>`;
+    return;
+  }
+
+  let html = '';
+  state.entries.forEach(e => {
+    const s = state.settings || DEFAULTS;
+    const dailyRent = s.avgKm > 0 ? (s.rent / s.avgKm) : 0;
+    const cFuel = e.km * (s.fuelPrice / (s.kmPerL || 1));
+    const cWear = e.km * s.wear;
+    const cRent = e.useRent ? (e.km * dailyRent) : 0;
+    const cost = cFuel + cWear + cRent + e.extra;
+    const net = e.gross - cost;
+
+    html += `
+      <div class="card p-4 flex items-center justify-between">
+        <div>
+          <div class="flex items-center gap-2">
+            <span class="text-xs font-bold px-2 py-0.5 rounded bg-line text-brand">${esc(e.platform)}</span>
+            <span class="text-xs text-gray-400">${formatDate(e.date)}</span>
+          </div>
+          <div class="text-lg font-black text-white mt-1 mono">${money(net)} <span class="text-xs font-normal text-gray-400">(Bruto: ${money(e.gross)})</span></div>
+          <div class="text-xs text-gray-500 mt-0.5">${n1(e.km)} KM • ${hm(e.hours)} • Custo: ${money(cost)}</div>
+        </div>
+        <button class="btn btn-danger" style="width:40px;height:40px;border-radius:12px;font-size:14px" onclick="deleteEntry('${e.id}')">✕</button>
+      </div>`;
+  });
+  hb.innerHTML = html;
+}
+
+function deleteEntry(id) {
+  if (confirm('Deseja excluir este registro?')) {
+    state.entries = state.entries.filter(e => e.id !== id);
+    saveState();
+    renderHist();
+    toast('Registro excluído.');
+  }
+}
+
+/* ===================== CONFIGURAÇÕES ===================== */
+function renderCfg() {
+  const s = state.settings || DEFAULTS;
+  ['fuelPrice', 'kmPerL', 'rent', 'wear', 'avgKm', 'goal', 'hourGoal', 'margin'].forEach(k => {
+    const el = document.querySelector(`[data-k="${k}"]`);
+    if (el) el.value = s[k] !== undefined ? s[k] : '';
+  });
+  updateVehicleLabels();
+  updateCfgSummary();
+  updateVehicleButtons();
+}
+
+function saveCfgInput(inp) {
+  const k = inp.dataset.k;
+  const v = parseNum(inp.value);
+  if (!isNaN(v)) {
+    state.settings[k] = v;
+    saveState();
+    updateCfgSummary();
+  }
+}
+
+function setVehiclePreset(type) {
+  state.settings.vehicleType = type;
+  if (type === 'moto') {
+    state.settings.fuelPrice = 6.00;
+    state.settings.kmPerL = 35;
+    state.settings.wear = 0.08;
+  } else if (type === 'eletrico') {
+    state.settings.fuelPrice = 0.95;
+    state.settings.kmPerL = 6.5;
+    state.settings.wear = 0.05;
+  } else {
+    state.settings.fuelPrice = 6.00;
+    state.settings.kmPerL = 11;
+    state.settings.wear = 0.15;
+  }
+  saveState();
+  renderCfg();
+  toast(`Perfil alterado para ${type.toUpperCase()}`);
+}
+
+function updateVehicleLabels() {
+  const type = state.settings.vehicleType || 'carro';
+  const fTitle = $('cfg-
