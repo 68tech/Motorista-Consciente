@@ -352,4 +352,583 @@ function loadState() {
     const raw = localStorage.getItem(LS_KEY);
     if (raw) {
       const s = JSON.parse(raw);
-      if (
+      if (s && Array.isArray(s.entries)) {
+        return { settings: Object.assign({}, DEFAULTS, s.settings || {}), entries: s.entries };
+      }
+    }
+  } catch (e) { if (memoryStore) return memoryStore; }
+  return { settings: Object.assign({}, DEFAULTS), entries: [] };
+}
+let state = loadState();
+function saveState() {
+  memoryStore = state;
+  try { localStorage.setItem(LS_KEY, JSON.stringify(state)); }
+  catch (e) { toast('⚠️ Não foi possível salvar neste navegador'); }
+}
+
+const ui = { view: 'dash', period: 'today', platform: 'Todos', histDays: 14, reportPeriod: 'today' };
+
+/* ===================== HELPERS ===================== */
+const brl = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
+const money = n => brl.format(isFinite(n) ? n : 0).replace(/\u00a0/g, ' ');
+const n1 = n => (isFinite(n) ? n : 0).toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+const n2 = n => (isFinite(n) ? n : 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const hm = h => { const m = Math.round((h || 0) * 60); return Math.floor(m / 60) + 'h' + String(m % 60).padStart(2, '0'); };
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const $ = id => document.getElementById(id);
+function parseNum(v) {
+  if (v === null || v === undefined) return NaN;
+  let s = String(v).trim().replace(/\s/g, '').replace('R$', '');
+  if (!s) return NaN;
+  if (s.includes(',') && s.includes('.')) s = s.replace(/\./g, '').replace(',', '.');
+  else s = s.replace(',', '.');
+  const n = parseFloat(s);
+  return isFinite(n) ? n : NaN;
+}
+
+function toast(msg) {
+  const t = $('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2500);
+}
+
+function formatDate(iso) {
+  if (!iso) return '';
+  const [y, m, d] = iso.split('-');
+  return `${d}/${m}/${y}`;
+}
+
+function getTodayIso() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+function copyPix() {
+  const pixKey = "042.093.092-22";
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(pixKey).then(() => toast('📋 Chave Pix copiada!'));
+  } else {
+    toast('Pix: 042.093.092-22');
+  }
+}
+
+/* ===================== NAVEGAÇÃO ===================== */
+function show(vId) {
+  ui.view = vId;
+  document.querySelectorAll('.view').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(el => el.classList.remove('on'));
+  const targetView = $(`view-${vId}`);
+  if (targetView) targetView.classList.add('active');
+  const targetNav = document.querySelector(`.nav-btn[data-v="${vId}"]`);
+  if (targetNav) targetNav.classList.add('on');
+  window.scrollTo(0, 0);
+  renderCurrentView();
+}
+
+function renderCurrentView() {
+  updateHeader();
+  if (ui.view === 'dash') renderDash();
+  else if (ui.view === 'eval') renderEval();
+  else if (ui.view === 'add') renderAdd();
+  else if (ui.view === 'hist') renderHist();
+  else if (ui.view === 'cfg') renderCfg();
+}
+
+function updateHeader() {
+  const now = new Date();
+  const options = { weekday: 'short', day: 'numeric', month: 'short' };
+  $('hdr-date').textContent = now.toLocaleDateString('pt-BR', options);
+  const type = state.settings.vehicleType || 'carro';
+  $('hdr-vtype').textContent = type === 'eletrico' ? '⚡ ELÉTRICO' : (type === 'moto' ? '🛵 MOTO' : '🚗 CARRO');
+}
+
+/* ===================== CÁLCULOS DE CUSTO ===================== */
+function calcCostPerKm(s) {
+  const fuel = s.fuelPrice || 6;
+  const kml = s.kmPerL || 10;
+  const wear = s.wear || 0.1;
+  return (fuel / kml) + wear;
+}
+
+function filterEntries(period) {
+  const now = new Date();
+  const todayStr = getTodayIso();
+  return state.entries.filter(e => {
+    if (ui.platform !== 'Todos' && e.platform !== ui.platform) return false;
+    if (period === 'today') return e.date === todayStr;
+    if (period === 'week') {
+      const d = new Date(e.date + 'T00:00:00');
+      const diff = (now - d) / (1000 * 60 * 60 * 24);
+      return diff >= 0 && diff < 7;
+    }
+    if (period === 'month') return e.date.substring(0, 7) === todayStr.substring(0, 7);
+    return true;
+  });
+}
+
+function summarize(entries) {
+  let gross = 0, km = 0, hours = 0, extra = 0, net = 0, cost = 0;
+  const s = state.settings;
+  const dailyRent = s.avgKm > 0 ? (s.rent / s.avgKm) : 0;
+
+  entries.forEach(e => {
+    gross += e.gross;
+    km += e.km;
+    hours += e.hours;
+    extra += e.extra;
+    const cFuel = e.km * (s.fuelPrice / s.kmPerL);
+    const cWear = e.km * s.wear;
+    const cRent = e.useRent ? (e.km * dailyRent) : 0;
+    const cTotal = cFuel + cWear + cRent + e.extra;
+    cost += cTotal;
+    net += (e.gross - cTotal);
+  });
+  return { gross, km, hours, extra, net, cost };
+}
+
+/* ===================== DASHBOARD ===================== */
+document.querySelectorAll('#period-seg button').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('#period-seg button').forEach(b => b.classList.remove('on'));
+    btn.classList.add('on');
+    ui.period = btn.dataset.p;
+    renderDash();
+  });
+});
+
+function renderPlatChips() {
+  const c = $('plat-chips');
+  let html = `<button class="chip ${ui.platform === 'Todos' ? 'on' : ''}" onclick="setPlat('Todos')">Todas</button>`;
+  PLATFORMS.forEach(p => {
+    html += `<button class="chip ${ui.platform === p ? 'on' : ''}" onclick="setPlat('${p}')">${esc(p)}</button>`;
+  });
+  c.innerHTML = html;
+}
+
+function setPlat(p) {
+  ui.platform = p;
+  renderPlatChips();
+  renderDash();
+}
+
+function renderDash() {
+  renderPlatChips();
+  const entries = filterEntries(ui.period);
+  const sum = summarize(entries);
+  const s = state.settings;
+
+  let goal = s.goal;
+  if (ui.period === 'week') goal = s.goal * 7;
+  if (ui.period === 'month') goal = s.goal * 30;
+  const pct = goal > 0 ? Math.min(Math.round((sum.net / goal) * 100), 999) : 0;
+
+  const hrNet = sum.hours > 0 ? (sum.net / sum.hours) : 0;
+  const kmNet = sum.km > 0 ? (sum.net / sum.km) : 0;
+
+  let hHTML = '';
+  if (ui.period === 'today') {
+    const ok = sum.net >= s.goal;
+    hHTML = `
+      <div class="card badge-big ${ok ? 'pulse-ok border-green-500/50' : ''} bg-gradient-to-b from-[#121821] to-[#0f141b]">
+        <div class="text-xs font-bold text-gray-400 uppercase tracking-widest">Lucro Líquido Hoje</div>
+        <div class="text-4xl font-black text-white mt-1 mono">${money(sum.net)}</div>
+        <div class="text-xs text-gray-400 mt-1">Meta: ${money(s.goal)} (${pct}%)</div>
+        <div class="bar mt-3"><div style="width:${Math.min(pct, 100)}%;background:${ok ? '#22c55e' : '#22d3ee'}"></div></div>
+      </div>`;
+  } else {
+    hHTML = `
+      <div class="card p-4 bg-gradient-to-b from-[#121821] to-[#0f141b]">
+        <div class="text-xs font-bold text-gray-400 uppercase tracking-widest">Resumo do Período</div>
+        <div class="text-3xl font-black text-white mt-1 mono">${money(sum.net)}</div>
+        <div class="flex justify-between text-xs text-gray-400 mt-2 pt-2 border-t border-line">
+          <span>Faturamento: <b>${money(sum.gross)}</b></span>
+          <span>Custos: <b>${money(sum.cost)}</b></span>
+          <span>Meta: <b>${pct}%</b></span>
+        </div>
+      </div>`;
+  }
+
+  let html = hHTML + `
+    <div class="grid grid-cols-2 gap-3 mt-3">
+      <div class="card p-3.5">
+        <div class="text-xs font-bold text-gray-400 uppercase">Por Hora Trabalhada</div>
+        <div class="text-2xl font-black text-white mt-1 mono">${money(hrNet)}/h</div>
+        <div class="text-xs text-gray-500 mt-0.5">Meta/h: ${money(s.hourGoal)} • ${hm(sum.hours)}</div>
+      </div>
+      <div class="card p-3.5">
+        <div class="text-xs font-bold text-gray-400 uppercase">Por KM Rodado</div>
+        <div class="text-2xl font-black text-white mt-1 mono">${money(kmNet)}/km</div>
+        <div class="text-xs text-gray-500 mt-0.5">${n1(sum.km)} KM rodados</div>
+      </div>
+    </div>`;
+
+  $('dash-body').innerHTML = html;
+}
+
+/* ===================== AVALIADOR ===================== */
+['ev-value', 'ev-km', 'ev-min'].forEach(id => {
+  const el = $(id);
+  if (el) el.addEventListener('input', updateEval);
+});
+
+function clearEval() {
+  $('ev-value').value = '';
+  $('ev-km').value = '';
+  $('ev-min').value = '';
+  updateEval();
+}
+
+function updateEval() {
+  const v = parseNum($('ev-value').value);
+  const km = parseNum($('ev-km').value);
+  const min = parseNum($('ev-min').value);
+  const res = $('ev-result');
+
+  if (isNaN(v) || isNaN(km) || km <= 0) {
+    res.innerHTML = `<div class="card p-4 text-center text-sm text-gray-500">Digite o valor e os KM para avaliar.</div>`;
+    return;
+  }
+
+  const s = state.settings;
+  const costKm = calcCostPerKm(s);
+  const totalCost = km * costKm;
+  const net = v - totalCost;
+  const rkm = v / km;
+  const minValid = isNaN(min) || min <= 0 ? 3 : min;
+  const rhr = (net / minValid) * 60;
+  const minMarginRkm = costKm * (1 + (s.margin / 100));
+  const isGood = rkm >= minMarginRkm && net > 0;
+
+  res.innerHTML = `
+    <div class="card p-5 ${isGood ? 'pulse-ok border-green-500/40 bg-gradient-to-b from-[#121821] to-[#0f141b]' : 'pulse-bad border-red-500/40 bg-gradient-to-b from-[#121821] to-[#171012]'}">
+      <div class="flex items-center justify-between">
+        <span class="text-xs font-extrabold uppercase px-2.5 py-1 rounded-full ${isGood ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}">
+          ${isGood ? '✅ VALE A PENA' : '❌ CORRIDA FRACA'}
+        </span>
+        <span class="text-sm font-bold text-gray-300 mono">Líquido: ${money(net)}</span>
+      </div>
+      <div class="grid grid-cols-3 gap-2 mt-4 pt-3 border-t border-line text-center">
+        <div>
+          <div class="text-[10px] text-gray-400 uppercase font-bold">Bruto/KM</div>
+          <div class="text-base font-black text-white mono mt-0.5">${money(rkm)}</div>
+        </div>
+        <div>
+          <div class="text-[10px] text-gray-400 uppercase font-bold">Custo/KM</div>
+          <div class="text-base font-black text-red-400 mono mt-0.5">${money(costKm)}</div>
+        </div>
+        <div>
+          <div class="text-[10px] text-gray-400 uppercase font-bold">Est. Hora</div>
+          <div class="text-base font-black text-white mono mt-0.5">${money(rhr)}</div>
+        </div>
+      </div>
+    </div>`;
+}
+
+/* ===================== REGISTRAR ===================== */
+function renderAdd() {
+  $('f-date').value = getTodayIso();
+  const sel = $('f-plat');
+  sel.innerHTML = PLATFORMS.map(p => `<option value="${esc(p)}">${esc(p)}</option>`).join('');
+  const s = state.settings;
+  $('f-rent').checked = s.rent > 0;
+  $('f-rent-info').textContent = `Aluguel cadastrado: ${money(s.rent)} / dia base`;
+  updatePreview();
+}
+
+['f-gross', 'f-km', 'f-hours', 'f-extra', 'f-rent'].forEach(id => {
+  const el = $(id);
+  if (el) el.addEventListener('input', updatePreview);
+  if (el && el.type === 'checkbox') el.addEventListener('change', updatePreview);
+});
+
+function updatePreview() {
+  const gross = parseNum($('f-gross').value) || 0;
+  const km = parseNum($('f-km').value) || 0;
+  const hours = parseNum($('f-hours').value) || 0;
+  const extra = parseNum($('f-extra').value) || 0;
+  const useRent = $('f-rent').checked;
+
+  const s = state.settings;
+  const dailyRent = s.avgKm > 0 ? (s.rent / s.avgKm) : 0;
+  const cFuel = km * (s.fuelPrice / s.kmPerL);
+  const cWear = km * s.wear;
+  const cRent = useRent ? (km * dailyRent) : 0;
+  const cost = cFuel + cWear + cRent + extra;
+  const net = gross - cost;
+
+  $('f-preview').innerHTML = `
+    <div class="font-bold text-gray-200 mb-1">Prévia do dia:</div>
+    <div class="flex justify-between text-xs text-gray-400"><span>Operacional:</span><span class="mono">${money(cFuel + cWear)}</span></div>
+    ${useRent ? `<div class="flex justify-between text-xs text-gray-400"><span>Aluguel proporcional:</span><span class="mono">${money(cRent)}</span></div>` : ''}
+    ${extra > 0 ? `<div class="flex justify-between text-xs text-gray-400"><span>Gastos extras:</span><span class="mono">${money(extra)}</span></div>` : ''}
+    <div class="flex justify-between text-sm font-bold text-brand mt-2 pt-2 border-t border-line"><span>Lucro Líquido:</span><span class="mono">${money(net)}</span></div>
+  `;
+}
+
+function saveEntry(e) {
+  e.preventDefault();
+  const date = $('f-date').value;
+  const platform = $('f-plat').value;
+  const gross = parseNum($('f-gross').value);
+  const km = parseNum($('f-km').value);
+  const hours = parseNum($('f-hours').value);
+  const extra = parseNum($('f-extra').value) || 0;
+  const useRent = $('f-rent').checked;
+
+  if (!date) { toast('⚠️ Informe a data'); return false; }
+  if (isNaN(gross) || gross < 0) { toast('⚠️ Faturamento inválido'); return false; }
+  if (isNaN(km) || km < 0) { toast('⚠️ KM inválido'); return false; }
+
+  const entry = { id: 'e_' + Date.now(), date, platform, gross, km, hours: isNaN(hours) ? 0 : hours, extra, useRent };
+  state.entries.unshift(entry);
+  saveState();
+  toast('✅ Dia registrado com sucesso!');
+  $('f-gross').value = '';
+  $('f-km').value = '';
+  $('f-hours').value = '';
+  $('f-extra').value = '';
+  show('dash');
+  return false;
+}
+
+/* ===================== HISTÓRICO ===================== */
+function renderHist() {
+  const hb = $('hist-body');
+  if (state.entries.length === 0) {
+    hb.innerHTML = `<div class="card p-6 text-center text-gray-500 text-sm">Nenhum registro encontrado.</div>`;
+    return;
+  }
+
+  let html = '';
+  state.entries.forEach(e => {
+    const s = state.settings;
+    const dailyRent = s.avgKm > 0 ? (s.rent / s.avgKm) : 0;
+    const cFuel = e.km * (s.fuelPrice / s.kmPerL);
+    const cWear = e.km * s.wear;
+    const cRent = e.useRent ? (e.km * dailyRent) : 0;
+    const cost = cFuel + cWear + cRent + e.extra;
+    const net = e.gross - cost;
+
+    html += `
+      <div class="card p-4 flex items-center justify-between">
+        <div>
+          <div class="flex items-center gap-2">
+            <span class="text-xs font-bold px-2 py-0.5 rounded bg-line text-brand">${esc(e.platform)}</span>
+            <span class="text-xs text-gray-400">${formatDate(e.date)}</span>
+          </div>
+          <div class="text-lg font-black text-white mt-1 mono">${money(net)} <span class="text-xs font-normal text-gray-400">(Bruto: ${money(e.gross)})</span></div>
+          <div class="text-xs text-gray-500 mt-0.5">${n1(e.km)} KM • ${hm(e.hours)} • Custo: ${money(cost)}</div>
+        </div>
+        <button class="btn btn-danger" style="width:40px;height:40px;border-radius:12px;font-size:14px" onclick="deleteEntry('${e.id}')">✕</button>
+      </div>`;
+  });
+  hb.innerHTML = html;
+}
+
+function deleteEntry(id) {
+  if (confirm('Deseja excluir este registro?')) {
+    state.entries = state.entries.filter(e => e.id !== id);
+    saveState();
+    renderHist();
+    toast('Registro excluído.');
+  }
+}
+
+/* ===================== CONFIGURAÇÕES ===================== */
+function renderCfg() {
+  const s = state.settings;
+  ['fuelPrice', 'kmPerL', 'rent', 'wear', 'avgKm', 'goal', 'hourGoal', 'margin'].forEach(k => {
+    const el = document.querySelector(`[data-k="${k}"]`);
+    if (el) el.value = s[k] !== undefined ? s[k] : '';
+  });
+  updateVehicleLabels();
+  updateCfgSummary();
+  updateVehicleButtons();
+}
+
+document.querySelectorAll('#view-cfg input[data-k]').forEach(inp => {
+  inp.addEventListener('input', () => {
+    const k = inp.dataset.k;
+    const v = parseNum(inp.value);
+    if (!isNaN(v)) {
+      state.settings[k] = v;
+      saveState();
+      updateCfgSummary();
+    }
+  });
+});
+
+function setVehiclePreset(type) {
+  state.settings.vehicleType = type;
+  if (type === 'moto') {
+    state.settings.fuelPrice = 6.00;
+    state.settings.kmPerL = 35;
+    state.settings.wear = 0.08;
+  } else if (type === 'eletrico') {
+    state.settings.fuelPrice = 0.95;
+    state.settings.kmPerL = 6.5;
+    state.settings.wear = 0.05;
+  } else {
+    state.settings.fuelPrice = 6.00;
+    state.settings.kmPerL = 11;
+    state.settings.wear = 0.15;
+  }
+  saveState();
+  renderCfg();
+  toast(`Perfil alterado para ${type.toUpperCase()}`);
+}
+
+function updateVehicleLabels() {
+  const type = state.settings.vehicleType || 'carro';
+  if (type === 'eletrico') {
+    $('cfg-fuel-title').textContent = '⚡ Custos de Recarga Elétrica';
+    $('lbl-fuel-price').textContent = 'Custo Energia (R$/kWh)';
+    $('lbl-fuel-kml').textContent = 'Autonomia (KM / kWh)';
+  } else {
+    $('cfg-fuel-title').textContent = '⛽ Custos do Veículo';
+    $('lbl-fuel-price').textContent = 'Combustível (R$/L)';
+    $('lbl-fuel-kml').textContent = 'Autonomia (KM/L)';
+  }
+}
+
+function updateVehicleButtons() {
+  const type = state.settings.vehicleType || 'carro';
+  const bMoto = $('btn-vtype-moto');
+  const bCarro = $('btn-vtype-carro');
+  const bEletrico = $('btn-vtype-eletrico');
+
+  bMoto.className = 'btn btn-ghost';
+  bCarro.className = 'btn btn-ghost';
+  bEletrico.className = 'btn btn-ghost';
+
+  if (type === 'moto') bMoto.className = 'btn btn-primary';
+  else if (type === 'eletrico') bEletrico.className = 'btn btn-primary';
+  else bCarro.className = 'btn btn-primary';
+}
+
+function updateCfgSummary() {
+  const s = state.settings;
+  const costKm = calcCostPerKm(s);
+  $('cfg-summary').innerHTML = `
+    <b>Resumo dos cálculos:</b><br>
+    • Custo por KM rodado: <b class="text-red-400">${money(costKm)}</b><br>
+    • Margem mínima recomendada: <b class="text-brand">${money(costKm * (1 + s.margin/100))}/km</b>
+  `;
+}
+
+/* ===================== RELATÓRIO WHATSAPP & PDF ===================== */
+function openReport(period) {
+  const entries = filterEntries(period);
+  const sum = summarize(entries);
+  const title = period === 'today' ? 'DE HOJE' : (period === 'week' ? 'DOS ÚLTIMOS 7 DIAS' : 'DO MÊS');
+
+  let text = `📊 *RELATÓRIO DE GANHOS - MOTORISTA ESPERTO AC* (${title})\n\n`;
+  text += `💵 Faturamento Bruto: *${money(sum.gross)}*\n`;
+  text += `⛽ Custos Totais: *${money(sum.cost)}*\n`;
+  text += `🚀 *Lucro Líquido Real: ${money(sum.net)}*\n\n`;
+  text += `📍 Total Rodado: *${n1(sum.km)} KM*\n`;
+  text += `⏱️ Horas na Pista: *${hm(sum.hours)}*\n`;
+  text += `📈 Média por Hora: *${money(sum.hours > 0 ? sum.net / sum.hours : 0)}/h*\n`;
+  text += `🚗 Média por KM: *${money(sum.km > 0 ? sum.net / sum.km : 0)}/km*\n\n`;
+  text += `_Gerado via Motorista Esperto AC_`;
+
+  openModal(`
+    <div id="pdf-area">
+      <h3 class="font-extrabold text-lg mb-1 text-white">📊 Relatório ${title}</h3>
+      <p class="text-xs text-gray-400 mb-3">Motorista Esperto AC</p>
+      <textarea class="inp mb-3" id="report-text" readonly>${text}</textarea>
+    </div>
+    <div class="grid grid-cols-2 gap-2 mt-2">
+      <button class="btn btn-primary" onclick="copyReport()">📲 Copiar Whats</button>
+      <button class="btn btn-ghost" onclick="downloadPDFModal()">📄 Baixar PDF</button>
+    </div>
+    <button class="btn btn-ghost mt-2" style="height:40px;font-size:13px" onclick="closeModal()">Fechar</button>
+  `);
+}
+
+function copyReport() {
+  const el = $('report-text');
+  el.select();
+  document.execCommand('copy');
+  toast('📋 Copiado para o WhatsApp!');
+  closeModal();
+}
+
+function downloadPDFModal() {
+  const elemento = document.getElementById('report-text');
+  const opcoes = {
+    margin:       10,
+    filename:     'Relatorio_MotoristaEspertoAC.pdf',
+    image:        { type: 'jpeg', quality: 0.98 },
+    html2canvas:  { scale: 2 },
+    jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
+  };
+  html2pdf().set(opcoes).from(elemento).save();
+  toast('📄 Gerando PDF...');
+}
+
+function openModal(html) {
+  $('modal').innerHTML = html;
+  $('modal-back').classList.add('open');
+}
+
+function closeModal() {
+  $('modal-back').classList.remove('open');
+}
+
+/* ===================== DEMO / DADOS ===================== */
+function askDemo() {
+  const today = getTodayIso();
+  state.entries = [
+    { id: 'd1', date: today, platform: 'Uber', gross: 240, km: 95, hours: 7.5, extra: 10, useRent: false },
+    { id: 'd2', date: today, platform: '99', gross: 120, km: 45, hours: 3.5, extra: 0, useRent: false }
+  ];
+  saveState();
+  toast('✅ Dados de teste carregados!');
+  show('dash');
+}
+
+function removeDemo() {
+  state.entries = [];
+  saveState();
+  toast('🧹 Dados de teste removidos.');
+  show('dash');
+}
+
+function askWipe() {
+  if (confirm('Tem certeza que deseja apagar todos os seus dados?')) {
+    localStorage.removeItem(LS_KEY);
+    state = { settings: Object.assign({}, DEFAULTS), entries: [] };
+    saveState();
+    toast('🗑️ Aplicativo limpo.');
+    show('dash');
+  }
+}
+
+/* ===================== INSTALAÇÃO PWA ===================== */
+let deferredPrompt = null;
+window.addEventListener('beforeinstallprompt', e => {
+  e.preventDefault();
+  deferredPrompt = e;
+  $('btn-install').style.display = 'flex';
+});
+
+function installApp() {
+  if (deferredPrompt) {
+    deferredPrompt.prompt();
+    deferredPrompt.userChoice.then(() => { deferredPrompt = null; $('btn-install').style.display = 'none'; });
+  }
+}
+
+// Inicialização
+window.addEventListener('DOMContentLoaded', () => {
+  renderAdd();
+  show('dash');
+});
+</script>
+</body>
+</html>
