@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-<title>Motorista Esperto AC - Gestão de Lucro Real</title>
+<title>Motorista Esperto AC - Gestão de Lucro para Motoristas e Entregadores</title>
 <meta name="description" content="Motorista Esperto AC: calcule seu lucro real, custo por KM e avalie corridas na hora.">
 <meta name="theme-color" content="#0b0f14">
 <meta name="mobile-web-app-capable" content="yes">
@@ -13,7 +13,7 @@
 <meta name="application-name" content="Motorista Esperto AC">
 <meta name="format-detection" content="telephone=no">
 
-<!-- Ícones para Instalação PWA e Navegador -->
+<!-- Ícones para PWA e Navegador -->
 <link rel="icon" type="image/png" href="logo.png">
 <link rel="apple-touch-icon" href="logo.png">
 
@@ -74,11 +74,11 @@
   #modal-back.open { display: flex; }
   #modal { width: 100%; max-width: 520px; background: #121821; border: 1px solid #1f2937; border-radius: 24px 24px 0 0; padding: 20px 18px calc(20px + env(safe-area-inset-bottom)); max-height: 90vh; overflow-y: auto; animation: slideUp .25s ease; }
   @keyframes slideUp { from { transform: translateY(40px); opacity: 0; } to { transform: none; opacity: 1; } }
-  textarea.inp { height: 260px; padding: 12px 14px; font-size: 15px; line-height: 1.45; font-family: ui-monospace, Menlo, Consolas, monospace; resize: none; }
+  textarea.inp { height: 200px; padding: 12px 14px; font-size: 14px; line-height: 1.45; font-family: ui-monospace, Menlo, Consolas, monospace; resize: none; }
   input[type=checkbox] { width: 24px; height: 24px; accent-color: #22c55e; }
   .mono { font-variant-numeric: tabular-nums; }
   
-  /* CONTAINER DA LOGO */
+  /* LOGO DA CABEÇA */
   .logo-box {
     width: 44px;
     height: 44px;
@@ -101,11 +101,11 @@
 
 <div id="app" class="max-w-xl mx-auto">
 
-  <!-- CABEÇALHO COM LOGO -->
+  <!-- HEADER COM LOGO ESTILIZADA -->
   <header class="px-4 pt-4 pb-2 flex items-center justify-between">
     <div class="flex items-center gap-3">
       <div class="logo-box">
-        <img src="logo.png" alt="Logo Motorista Esperto AC" onerror="this.onerror=null; this.src='data:image/svg+xml;utf8,<svg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 24 24\' fill=\'%2322c55e\'><path d=\'M13 2L4 14h7l-1 8 9-12h-7z\'/></svg>';">
+        <img src="logo.png" alt="Logo" onerror="this.onerror=null; this.src='data:image/svg+xml;utf8,<svg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 24 24\' fill=\'%2322c55e\'><path d=\'M13 2L4 14h7l-1 8 9-12h-7z\'/></svg>';">
       </div>
       <div>
         <div class="flex items-center gap-1.5">
@@ -118,7 +118,7 @@
     <div id="hdr-date" class="text-right text-xs text-gray-400 font-semibold"></div>
   </header>
 
-  <main class="px-4 pb-32" id="app-content-pdf">
+  <main class="px-4 pb-32">
 
     <!-- ============ DASHBOARD ============ -->
     <section id="view-dash" class="view active">
@@ -131,11 +131,6 @@
       <div class="flex gap-2 overflow-x-auto no-scrollbar mt-3 pb-1" id="plat-chips"></div>
 
       <div id="dash-body" class="mt-3"></div>
-
-      <!-- BOTÃO PARA EXPORTAR RELATÓRIO EM PDF -->
-      <button onclick="gerarPDF()" class="w-full mt-4 bg-slate-800 hover:bg-slate-700 text-emerald-400 font-bold p-3.5 rounded-2xl text-sm flex items-center justify-center gap-2 border border-slate-700 transition-all shadow-lg">
-        📄 Exportar Relatório em PDF
-      </button>
     </section>
 
     <!-- ============ AVALIADOR ============ -->
@@ -165,7 +160,7 @@
     <!-- ============ REGISTRAR ============ -->
     <section id="view-add" class="view">
       <h2 class="text-2xl font-extrabold mt-2">Registrar dia</h2>
-      <p class="text-sm text-gray-400 mt-1">O custo operacional é calculado automaticamente pelos KMs.</p>
+      <p class="text-sm text-gray-400 mt-1">O combustível é calculatedo automaticamente pelos KMs.</p>
 
       <form id="add-form" class="card p-4 mt-4 space-y-4" onsubmit="return saveEntry(event)" novalidate>
         <div class="grid grid-cols-2 gap-3">
@@ -193,7 +188,7 @@
           </div>
         </div>
         <div>
-          <label class="lbl" for="f-extra">Gastos extras (R$) — lanche, recarga, lavagem...</label>
+          <label class="lbl" for="f-extra">Gastos extras (R$) — lanche, pedágio, lavagem...</label>
           <input id="f-extra" class="inp" type="text" inputmode="decimal" placeholder="0,00" autocomplete="off">
         </div>
         <label class="flex items-center gap-3 bg-soft border border-line rounded-2xl p-3" for="f-rent">
@@ -209,13 +204,13 @@
 
     <!-- ============ HISTÓRICO ============ -->
     <section id="view-hist" class="view">
-      <h2 class="text-2xl font-extrabold mt-2">Histórico</h2>
+      <h2 class="text-2xl font-extrabold mt-2">Histórico & Relatórios</h2>
       <div class="grid grid-cols-3 gap-2 mt-3">
         <button class="btn btn-ghost" style="height:48px;font-size:14px" onclick="openReport('today')">📲 Dia</button>
         <button class="btn btn-ghost" style="height:48px;font-size:14px" onclick="openReport('week')">📲 Semana</button>
         <button class="btn btn-ghost" style="height:48px;font-size:14px" onclick="openReport('month')">📲 Mês</button>
       </div>
-      <p class="text-xs text-gray-500 mt-1 ml-1">Gerar relatório para WhatsApp</p>
+      <p class="text-xs text-gray-500 mt-1 ml-1">Gerar relatório em texto para WhatsApp ou PDF</p>
       <div id="hist-body" class="mt-3 space-y-4"></div>
     </section>
 
@@ -283,20 +278,19 @@
         <div id="cfg-summary" class="bg-soft border border-line rounded-2xl p-3 text-sm"></div>
       </div>
 
-      <!-- CARD DE APOIO / DOAÇÃO PIX -->
+      <!-- CARD PIX / DESENVOLVEDOR -->
       <div class="card p-4 mt-4 space-y-3 bg-gradient-to-b from-[#121821] to-[#0f141b] border-emerald-500/30">
         <div class="flex items-center gap-2">
           <span class="text-xl">☕</span>
           <h3 class="font-bold text-emerald-400">Apoie o Desenvolvedor</h3>
         </div>
         <p class="text-xs text-gray-300 leading-relaxed">
-          Este aplicativo é <b>100% gratuito</b> para ajudar os motoristas e entregadores do Acre. Se a ferramenta te ajuda no dia a dia e você quiser apoiar a criação de novas melhorias, faça uma doação de qualquer valor!
+          Este aplicativo é <b>100% gratuito</b> para ajudar os motoristas do Acre. Se o app te ajuda no dia a dia, apoie o projeto com qualquer valor!
         </p>
-        
         <div class="bg-soft border border-line rounded-xl p-3 flex items-center justify-between gap-2">
           <div>
             <div class="text-[10px] uppercase font-bold text-gray-500">Chave Pix (CPF)</div>
-            <div class="text-sm font-extrabold text-white mono" id="pix-key">042.093.092-22</div>
+            <div class="text-sm font-extrabold text-white mono">042.093.092-22</div>
           </div>
           <button type="button" class="btn btn-primary" style="height:38px; width:auto; padding:0 12px; font-size:13px;" onclick="copyPix()">
             📋 Copiar Pix
@@ -320,7 +314,7 @@
 
   </main>
 
-  <!-- NAVEGAÇÃO INFERIOR -->
+  <!-- NAV -->
   <nav class="fixed bottom-0 left-0 right-0 z-50 border-t border-line" style="background:rgba(11,15,20,.96);backdrop-filter:blur(10px);padding-bottom:env(safe-area-inset-bottom)">
     <div class="max-w-xl mx-auto flex">
       <button class="nav-btn on" data-v="dash" onclick="show('dash')">
@@ -347,7 +341,15 @@
 
 <script>
 /* ===================== DADOS & ESTADO ===================== */
-const LS_KEY = 'motoristaespertoac.v3';
+const LS_KEY = 'driverstats.v2';
+const PLATFORMS = ['Uber', '99', 'iFood', '99Food', 'InDrive', 'Particular'];
+const PLAT_COLOR = { 'Uber': '#e5e7eb', '99': '#facc15', 'iFood': '#ef4444', '99Food': '#f97316', 'InDrive': '#a3e635', 'Particular': '#38bdf8' };
+const DEFAULTS = { vehicleType: 'carro', fuelPrice: 6.00, kmPerL: 11, rent: 0, wear: 0.10, avgKm: 150, goal: 150, hourGoal: 25, margin: 40 };
 
-// Plataformas disponíveis no Estado
-const PLATFORMS = ['Uber', '99', 'iFood'
+let memoryStore = null;
+function loadState() {
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    if (raw) {
+      const s = JSON.parse(raw);
+      if (
